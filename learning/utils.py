@@ -8,8 +8,45 @@ from os.path import join
 
 EPS = 1e-5
 
-LOGGING_FOLDER = 'C:/temp/py_logging'
+LOGGING_FOLDER = 'C:/temp/py_logging'  # use environment variable instead?
 
+
+class Vec:
+    def __init__(self, i, j):
+        self.i = i
+        self.j = j
+
+    @property
+    def x(self):
+        return self.j
+
+    @x.setter
+    def x(self, x):
+        self.j = x
+
+    @property
+    def y(self):
+        return self.i
+
+    @y.setter
+    def y(self, y):
+        self.i = y
+
+    @property
+    def ij(self):
+        return (self.i, self.j)
+
+    def __neg__(self):
+        return Vec(-self.i, -self.j)
+
+    def __add__(self, other):
+        return Vec(self.i + other.i, self.j + other.j)
+
+    def __sub__(self, other):
+        return self + (-other)
+
+
+# Helper functions
 
 def bp():
     import ipdb; ipdb.set_trace()

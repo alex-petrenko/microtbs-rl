@@ -4,7 +4,7 @@ import logging
 
 from utils import *
 
-from turn_based_strategy import TurnBasedStrategy
+from turn_based_strategy import Game
 
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -14,7 +14,7 @@ def main():
     """Script entry point."""
     init_logger(os.path.basename(__file__))
 
-    game = TurnBasedStrategy()
+    game = Game()
 
     while not game.should_quit():
         game.reset()

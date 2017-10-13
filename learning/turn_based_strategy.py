@@ -15,41 +15,6 @@ from utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-class Vec:
-    def __init__(self, i, j):
-        self.i = i
-        self.j = j
-
-    @property
-    def x(self):
-        return self.j
-
-    @x.setter
-    def x(self, x):
-        self.j = x
-
-    @property
-    def y(self):
-        return self.i
-
-    @y.setter
-    def y(self, y):
-        self.i = y
-
-    @property
-    def ij(self):
-        return (self.i, self.j)
-
-    def __neg__(self):
-        return Vec(-self.i, -self.j)
-
-    def __add__(self, other):
-        return Vec(self.i + other.i, self.j + other.j)
-
-    def __sub__(self, other):
-        return self + (-other)
-
-
 class Hero:
     def __init__(self, game):
         self.game = game
@@ -59,13 +24,18 @@ class Hero:
     def draw(self):
         self.game._draw_tile(self.pos, self.color)
 
+    def as_dict(self):
+        return {
+            'pos': self.pos,
+        }
+
 
 class Tile:
-    GROUND, OBSTACLE, GOLD = range(3)
+    ground, obstacle, gold = range(3)
     colors = {
-        GROUND: (39, 40, 34),
-        OBSTACLE: (163, 163, 163),
-        GOLD: (255, 191, 0),
+        ground: (39, 40, 34),
+        obstacle: (163, 163, 163),
+        gold: (255, 191, 0),
     }
 
     @classmethod
@@ -89,10 +59,12 @@ class Action:
     def delta(cls, action):
         return Vec(*cls.movement[action])
 
-class TurnBasedStrategy:
+class Game:
     border = 1
+    max_num_steps = 30
 
-    def __init__(self, size=5, resolution=500):
+    def __init__(self, windowless=False, size=6, resolution=800):
+        self.num_steps = 0
         self.over = False
         self.quit = False
 
@@ -107,37 +79,47 @@ class TurnBasedStrategy:
             self.tile_size += 1
 
         self.screen_size = self.tile_size * dim
-        self.screen = pygame.display.set_mode((self.screen_size, self.screen_size))
+
+        self.screen = None
+        if not windowless:
+            self.screen = pygame.display.set_mode((self.screen_size, self.screen_size))
 
         self.clock = pygame.time.Clock()
-
         self.reset()
 
+    def get_state(self):
+        return {
+            'world': self.world,
+            'hero': self.hero.as_dict(),
+        }
+
     def reset(self):
+        self.num_steps = 0
         self.over = False
 
         dim = self.world_size
-        world = np.full((dim, dim), Tile.GROUND)
+        world = np.full((dim, dim), Tile.ground)
 
         # setting world boundaries
-        world[0] = world[dim - 1] = world[:, 0] = world[:, dim - 1] = Tile.OBSTACLE
+        world[0] = world[dim - 1] = world[:, 0] = world[:, dim - 1] = Tile.obstacle
 
         def random_coord():
             return random.randrange(self.border, dim - self.border)
         def random_pos():
             return (random_coord(), random_coord())
 
-        num_gold_piles = random.randint(1, 5)
+        num_gold_piles = random.randint(1, 20)
         for _ in range(num_gold_piles):
-            world[random_pos()] = Tile.GOLD
+            world[random_pos()] = Tile.gold
 
         self.hero.pos = None
         while self.hero.pos is None:
             pos = random_pos()
-            if world[pos] == Tile.GROUND:
+            if world[pos] == Tile.ground:
                 self.hero.pos = Vec(*pos)
 
         self.world = world
+        return self.get_state()
 
     def is_over(self):
         return self.over
@@ -168,26 +150,31 @@ class TurnBasedStrategy:
         return Action.noop
 
     def step(self, action):
+        self.num_steps += 1
+
         new_pos = self.hero.pos + Action.delta(action)
         reward = 0
-        if self.world[new_pos.ij] == Tile.GOLD:
-            reward += 0.01
-            self.world[new_pos.ij] = Tile.GROUND
-        elif self.world[new_pos.ij] != Tile.OBSTACLE:
+        if self.world[new_pos.ij] == Tile.gold:
+            reward += 0.1
+            self.world[new_pos.ij] = Tile.ground
+        elif self.world[new_pos.ij] != Tile.obstacle:
             self.hero.pos = new_pos
 
-        gold_left = (self.world == Tile.GOLD).sum()
+        gold_left = (self.world == Tile.gold).sum()
         if gold_left == 0:
             reward += 0.5
             self.over = True
 
-        return self.world, reward
+        if self.num_steps > self.max_num_steps:
+            self.over = True
+
+        return self.get_state(), reward
 
     def render(self):
-        self.screen.fill(Tile.color(Tile.GROUND))
+        self.screen.fill(Tile.color(Tile.ground))
 
         for (i, j), tile in np.ndenumerate(self.world):
-            if tile == Tile.GROUND:
+            if tile == Tile.ground:
                 continue
             self._draw_tile(Vec(i, j), Tile.color(tile))
 
