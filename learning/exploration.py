@@ -2,7 +2,7 @@ import random
 
 
 class EpsilonGreedy:
-    def __init__(self, min_exploration=0.1, decay_steps=200000):
+    def __init__(self, min_exploration=0.2, decay_steps=200000):
         self.min_exploration = min_exploration
         self.decay_steps = decay_steps
 

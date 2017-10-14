@@ -95,24 +95,24 @@ class AgentDqn(Agent):
         self.action = tf.argmax(Q, axis=1)
 
         tf.summary.histogram('Q', Q)
-        tf.summary.scalar('Q_mean', tf.reduce_mean(Q))
+        tf.summary.scalar('Q_avg', tf.reduce_mean(Q))
         tf.summary.histogram('action', self.action)
-        tf.summary.scalar('action_mean', tf.reduce_mean(self.action))
+        tf.summary.scalar('action_avg', tf.reduce_mean(tf.to_float(self.action)))
 
         logger.info('Total parameters in the model: %d', count_total_parameters())
 
         self.selected_action = tf.placeholder(tf.int32, shape=[None])
-        tf.summary.histogram('selected_action', self.selected_action)
-        tf.summary.scalar('selected_action_mean', tf.reduce_mean(self.selected_action))
+        tf.summary.histogram('sel_action', self.selected_action)
+        tf.summary.scalar('sel_action_avg', tf.reduce_mean(tf.to_float(self.selected_action)))
 
         action_one_hot = tf.one_hot(self.selected_action, num_actions, 1.0, 0.0)
         self.Q_acted = tf.reduce_sum(Q * action_one_hot, axis=1)
 
         self.reward = tf.placeholder(tf.float32, shape=[None])
-        tf.summary.scalar('reward_mean', tf.reduce_mean(self.reward))
+        tf.summary.scalar('reward_avg', tf.reduce_mean(self.reward))
 
         self.Q_target = tf.placeholder(tf.float32, shape=[None])
-        tf.summary.scalar('Q_target_mean', tf.reduce_mean(self.Q_target))
+        tf.summary.scalar('Q_target_avg', tf.reduce_mean(self.Q_target))
 
         with tf.name_scope('loss'):
             # basically, a Bellman equation update
@@ -175,7 +175,7 @@ class AgentDqn(Agent):
         return cls._saver_dir + '/' + cls.__name__
 
     def _maybe_save(self, step):
-        save_every = 5000
+        save_every = 10000
         if step % save_every == 0:
             logger.info('Step #%d, saving...', step)
             self.saver.save(self.session, self._saver_path(), global_step=step)

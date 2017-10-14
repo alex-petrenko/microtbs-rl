@@ -44,8 +44,8 @@ class Tile:
 
 
 class Action:
-    all_actions = range(5)
-    noop, up, right, down, left = all_actions
+    all_actions = range(9)
+    noop, up, right, down, left, ul, ur, dl, dr = all_actions
 
     movement = {
         noop: (0, 0),
@@ -53,6 +53,10 @@ class Action:
         right: (0, 1),
         down: (1, 0),
         left: (0, -1),
+        ul: (-1, -1),
+        ur: (-1, 1),
+        dl: (1, -1),
+        dr: (1, 1),
     }
 
     @classmethod
@@ -61,9 +65,9 @@ class Action:
 
 class Game:
     border = 1
-    max_num_steps = 30
+    max_num_steps = 100
 
-    def __init__(self, windowless=False, size=6, resolution=800):
+    def __init__(self, windowless=False, size=16, resolution=500):
         self.num_steps = 0
         self.over = False
         self.quit = False
@@ -108,7 +112,7 @@ class Game:
         def random_pos():
             return (random_coord(), random_coord())
 
-        num_gold_piles = random.randint(1, 20)
+        num_gold_piles = random.randint(1, 24)
         for _ in range(num_gold_piles):
             world[random_pos()] = Tile.gold
 
