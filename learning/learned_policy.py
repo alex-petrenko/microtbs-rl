@@ -31,7 +31,7 @@ def main():
     logger.info('Args: %r', args)
     train = args.train
 
-    game = Game()
+    game = Game(windowless=train)
     state = game.reset()
 
     agent = AgentDqn(game.allowed_actions(), preprocess_state(state))
@@ -41,15 +41,16 @@ def main():
     while not game.should_quit():
         state = game.reset()
         num_episodes += 1
-        logger.info('Episode: %r', num_episodes)
-        while not game.is_over():
-            game.process_events()
+        if num_episodes % 10 == 0:
+            logger.info('Episode: %r', num_episodes)
 
+        while not game.is_over():
             if train:
                 state = agent.explore(game, state)
                 if num_episodes % 5 == 0:
                     agent.update()
             else:
+                game.process_events()
                 action = agent.act(state)
                 state, _ = game.step(action)
                 game.render()

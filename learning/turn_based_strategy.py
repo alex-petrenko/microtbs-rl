@@ -65,9 +65,9 @@ class Action:
 
 class Game:
     border = 1
-    max_num_steps = 100
+    max_num_steps = 30
 
-    def __init__(self, windowless=False, size=16, resolution=500):
+    def __init__(self, windowless=False, size=6, resolution=500):
         self.num_steps = 0
         self.over = False
         self.quit = False
@@ -112,7 +112,7 @@ class Game:
         def random_pos():
             return (random_coord(), random_coord())
 
-        num_gold_piles = random.randint(1, 24)
+        num_gold_piles = random.randint(1, int(dim * dim * 0.5))
         for _ in range(num_gold_piles):
             world[random_pos()] = Tile.gold
 
