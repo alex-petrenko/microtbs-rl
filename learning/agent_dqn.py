@@ -253,7 +253,7 @@ class AgentDqn(Agent):
         return update_ops
 
     def _maybe_update_target(self, step):
-        update_every = 5000
+        update_every = 20000
         if step % update_every == 0:
             self.session.run(self.update_target_ops)
 
@@ -283,7 +283,7 @@ class AgentDqn(Agent):
         logger.info('Selected action: %r', action)
         return action
 
-    def explore(self, env, curr_state):
+    def _explore(self, env, curr_state):
         step = tf.train.global_step(self.session, tf.train.get_global_step())
         state = preprocess_state(curr_state)
 
@@ -294,18 +294,12 @@ class AgentDqn(Agent):
         )
 
         new_state, reward = env.step(self.allowed_actions[action_idx])
-        self.memory.remember((state, action_idx, preprocess_state(new_state), reward))
-        return new_state
+        return state, action_idx, new_state, reward
 
-    def update(self):
-        if not self.memory.good_enough():
-            return  # skip updating until we gain more experience
-
+    def _update_step(self, state, action_idx, new_state, reward):
         step = tf.train.global_step(self.session, tf.train.get_global_step())
         if step % 1000 == 0:
             logger.info('Training step: %r', step)
-
-        state, action_idx, new_state, reward = self.memory.recollect()
 
         Q_new_state = self.session.run(
             self.target_dqn.Q_best,
@@ -339,3 +333,19 @@ class AgentDqn(Agent):
 
         self._maybe_update_target(step)
         self._maybe_save(step)
+
+    def update(self, env, curr_state):
+        state, action_idx, new_state, reward = self._explore(env, curr_state)
+        self._update_step([state], [action_idx], [preprocess_state(new_state)], [reward])
+        return new_state
+
+    def explore_and_remember(self, env, curr_state):
+        state, action_idx, new_state, reward = self._explore(env, curr_state)
+        self.memory.remember((state, action_idx, preprocess_state(new_state), reward))
+        return new_state
+
+    def update_with_replay_memory(self):
+        if not self.memory.good_enough():
+            return  # skip updating until we gain more experience
+        state, action_idx, new_state, reward = self.memory.recollect()
+        self._update_step(state, action_idx, new_state, reward)

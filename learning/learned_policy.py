@@ -46,9 +46,7 @@ def main():
 
         while not game.is_over():
             if train:
-                state = agent.explore(game, state)
-                if num_episodes % 5 == 0:
-                    agent.update()
+                state = agent.update(game, state)
             else:
                 game.process_events()
                 action = agent.act(state)
