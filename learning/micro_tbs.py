@@ -206,14 +206,17 @@ class Action:
 
 class Game:
     border = 1
-    max_num_steps = 40
+    max_num_steps = 400
 
-    def __init__(self, windowless=False, world_size=6, view_size=6, resolution=500):
+    def __init__(self, windowless=False, world_size=30, view_size=10, resolution=500):
         self.num_steps = 0
         self.over = False
         self.quit = False
+        self.key_down = False
 
         self.view_size = view_size
+        self.camera_pos = Vec(0, 0)
+
         dim = world_size + 2 * self.border
         self.world_size = dim
         self.terrain = None
@@ -223,19 +226,19 @@ class Game:
         self.hero = None
 
         # pylint: disable=too-many-function-args
-        self.state_surface = pygame.Surface((self.world_size, self.world_size))
+        self.state_surface = pygame.Surface((self.view_size, self.view_size))
 
         # reset the game world
         self.reset()
 
         # stuff related to game rendering
         self.screen_scale = 1
-        while self.screen_scale * dim < resolution:
+        while self.screen_scale * self.view_size < resolution:
             self.screen_scale += 1
 
         self.screen = None
         if not windowless:
-            self.screen_size_world = self.screen_scale * dim
+            self.screen_size_world = self.screen_scale * self.view_size
             ui_size = min(200, resolution // 3)
             screen_w = self.screen_size_world + ui_size
             screen_h = self.screen_size_world
@@ -248,6 +251,8 @@ class Game:
         """Generate the new game."""
         self.num_steps = 0
         self.over = False
+        self.key_down = False
+
         self.hero = None
         dim = self.world_size
 
@@ -271,6 +276,12 @@ class Game:
             self.hero = Hero(team=Hero.team_red, start_movepoints=start_movepoints)
             hero_pos_idx = random.randrange(len(unoccupied_cells))
             self.hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
+
+        # setup camera
+        camera_i = max(0, self.hero.pos.i - self.view_size // 2)
+        camera_j = max(0, self.hero.pos.j - self.view_size // 2)
+        self.camera_pos = Vec(camera_i, camera_j)
+        self._update_camera_position()
 
         return self.get_state()
 
@@ -335,22 +346,32 @@ class Game:
         return Action.all_actions
 
     def process_events(self):
+        events = []
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.over = self.quit = True
-                return Action.noop
+            events.append(event.type)
+        if pygame.QUIT in events:
+            self.over = self.quit = True
+            return Action.noop
 
-        a_map = {
-            pygame.K_UP: Action.up,
-            pygame.K_DOWN: Action.down,
-            pygame.K_LEFT: Action.left,
-            pygame.K_RIGHT: Action.right,
-        }
-        pressed = pygame.key.get_pressed()
-        for key, action in a_map.items():
-            if pressed[key]:
-                return action
-        return Action.noop
+        selected_action = Action.noop
+        if not self.key_down:
+            a_map = {
+                pygame.K_UP: Action.up,
+                pygame.K_DOWN: Action.down,
+                pygame.K_LEFT: Action.left,
+                pygame.K_RIGHT: Action.right,
+            }
+            pressed = pygame.key.get_pressed()
+            for key, action in a_map.items():
+                if pressed[key]:
+                    self.key_down = True
+                    selected_action = action
+                    break
+
+        if pygame.KEYUP in events:
+            self.key_down = False
+
+        return selected_action
 
     def _win_condition(self):
         return self.num_gold_piles == 0
@@ -401,32 +422,60 @@ class Game:
         if self._game_over_condition():
             self.over = True
 
+        self._update_camera_position()
+
         return self.get_state(), reward
 
+    def _update_camera_position(self):
+        def update_coord(pos, hero_pos):
+            min_offset = self.view_size // 4
+            pos = min(pos, hero_pos - min_offset)
+            pos = max(pos, hero_pos + min_offset - self.view_size)
+            pos = min(pos, self.world_size - self.view_size)
+            pos = max(pos, 0)
+            return pos
+        self.camera_pos.i = update_coord(self.camera_pos.i, self.hero.pos.i)
+        self.camera_pos.j = update_coord(self.camera_pos.j, self.hero.pos.j)
+
     def _render_game_world(self, surface, scale):
-        surface.fill((0, 0, 0))
-        for (i, j), terrain in np.ndenumerate(self.terrain):
-            terrain.draw(self, surface, Vec(i, j), scale)
-        for (i, j), obj in np.ndenumerate(self.objects):
-            if obj is not None:
-                obj.draw(self, surface, Vec(i, j), scale)
-        self.hero.draw(self, surface, self.hero.pos, scale)
+        camera = self.camera_pos
+        assert camera.i >= 0 and camera.j >= 0
+        min_i, min_j = camera.i, camera.j
+        max_i = min(self.world_size, min_i + self.view_size)
+        max_j = min(self.world_size, min_j + self.view_size)
+
+        surface.fill(Obstacle._color())
+        for i in range(min_i, max_i):
+            for j in range(min_j, max_j):
+                self.terrain[i, j].draw(self, surface, Vec(i, j) - camera, scale)
+                obj = self.objects[i, j]
+                if obj is not None:
+                    obj.draw(self, surface, Vec(i, j) - camera, scale)
+
+        assert self.hero.pos.i >= min_i and self.hero.pos.i < max_i
+        assert self.hero.pos.j >= min_j and self.hero.pos.j < max_j
+        self.hero.draw(self, surface, self.hero.pos - camera, scale)
 
     def _render_info(self):
-        self.ui_surface.fill((39, 40, 34))
+        self.ui_surface.fill((0, 0, 0))
         text_color = (248, 248, 242)
         text_items = [
             'Movepoints: ' + str(self.hero.movepoints),
             'Gold: ' + str(self.hero.money),
             'Time left: ' + str(self.max_num_steps - self.num_steps),
         ]
-        offset = self.screen.get_height() // 100
+        offset = self.screen.get_height() // 50
         x_offset = y_offset = offset
         for text in text_items:
             label = self.font.render(text, 1, text_color)
             self.ui_surface.blit(label, (x_offset, y_offset))
             y_offset += label.get_height() + offset
         self.screen.blit(self.ui_surface, (self.screen_size_world, 0))
+
+    def _render_layout(self):
+        col = (24, 131, 215)
+        w, h = self.screen_size_world, self.screen_size_world
+        pygame.draw.line(self.screen, col, (w, 0), (w, h), 2)
 
     @staticmethod
     def _draw_tile(surface, pos, color, scale):
@@ -455,4 +504,5 @@ class Game:
     def render(self):
         self._render_game_world(self.screen, self.screen_scale)
         self._render_info()
+        self._render_layout()
         pygame.display.flip()
