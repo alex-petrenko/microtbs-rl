@@ -4,7 +4,7 @@ import logging
 
 from utils import *
 
-from turn_based_strategy import Game
+from micro_tbs import Game
 
 
 logger = logging.getLogger(os.path.basename(__file__))

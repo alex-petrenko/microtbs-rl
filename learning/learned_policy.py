@@ -5,7 +5,7 @@ import argparse
 
 from utils import *
 
-from turn_based_strategy import Game
+from micro_tbs import Game
 from agent_dqn import AgentDqn, preprocess_state
 
 

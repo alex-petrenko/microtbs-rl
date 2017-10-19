@@ -13,22 +13,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 def preprocess_state(input_state):
     """Convert state dictionary to multichannel numpy array."""
-    world = input_state['world']
-    hero = input_state['hero']
-    hero_pos = hero['pos']
-    size = world.shape[0]
-    channels = 2
-
-    state = np.ndarray(shape=(size, size, channels), dtype=np.float32)
-
-    world = world.astype(np.float32)
-    world /= np.max(world)  # convert to 0-1 range
-    state[:, :, 0] = world  # 1st channel is world tiles (ground, obstacle, gold)
-
-    state[:, :, 1] = 0
-    state[hero_pos.i, hero_pos.j, 1] = 1  # 2nd channel codes the position of the player
-
-    return state
+    return input_state['visual_state']
 
 
 class DeepQNetwork:
