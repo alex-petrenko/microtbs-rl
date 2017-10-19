@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import time
 import logging
 
@@ -44,6 +45,12 @@ class Vec:
 
     def __sub__(self, other):
         return self + (-other)
+
+    def dist_sq(self, other):
+        return (self.i - other.i) ** 2 + (self.j - other.j) ** 2
+
+    def dist(self, other):
+        return math.sqrt(self.dist_sq(other))
 
 
 # Helper functions

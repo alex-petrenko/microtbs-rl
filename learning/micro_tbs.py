@@ -1,4 +1,5 @@
 import os
+import math
 import random
 import logging
 
@@ -146,6 +147,7 @@ class Hero(Entity):
         self.team = team
         self.movepoints = start_movepoints
         self.money = start_money
+        self.scouting = 3.5
 
     def _color(self):
         return self.colors[self.team]
@@ -153,6 +155,9 @@ class Hero(Entity):
     def change_movepoints(self, delta):
         self.movepoints += delta
         self.movepoints = max(0, self.movepoints)
+
+    def within_scouting_range(self, i, j):
+        return self.pos.dist_sq(Vec(i, j)) <= (self.scouting ** 2) + 1e-5
 
 
 # class Tile:
@@ -205,10 +210,9 @@ class Action:
 
 
 class Game:
-    border = 1
     max_num_steps = 400
 
-    def __init__(self, windowless=False, world_size=30, view_size=10, resolution=500):
+    def __init__(self, windowless=False, world_size=30, view_size=14, resolution=700):
         self.num_steps = 0
         self.over = False
         self.quit = False
@@ -217,10 +221,11 @@ class Game:
         self.view_size = view_size
         self.camera_pos = Vec(0, 0)
 
-        dim = world_size + 2 * self.border
-        self.world_size = dim
+        self.border = (self.view_size // 2) + 1
+        self.world_size = world_size + 2 * self.border
         self.terrain = None
         self.objects = None
+        self.fog_of_war = None
         self.num_gold_piles = 0
 
         self.hero = None
@@ -243,7 +248,7 @@ class Game:
             screen_w = self.screen_size_world + ui_size
             screen_h = self.screen_size_world
             self.screen = pygame.display.set_mode((screen_w, screen_h))
-            self.font = pygame.font.SysFont(None, resolution // 25)
+            self.font = pygame.font.SysFont(None, resolution // 30)
             self.ui_surface = pygame.Surface((ui_size, screen_h))
         self.clock = pygame.time.Clock()
 
@@ -277,6 +282,8 @@ class Game:
             hero_pos_idx = random.randrange(len(unoccupied_cells))
             self.hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
 
+        self._update_scouting()
+
         # setup camera
         camera_i = max(0, self.hero.pos.i - self.view_size // 2)
         camera_j = max(0, self.hero.pos.j - self.view_size // 2)
@@ -288,12 +295,16 @@ class Game:
     def _generate_world(self):
         dim = self.world_size
 
+        # initially, everything is covered by fog of war
+        self.fog_of_war = np.full((dim, dim), 1, dtype=np.uint8)
+
         ground, obstacle, swamp = Ground(), Obstacle(), Swamp()
         self.terrain = np.full((dim, dim), ground, dtype=Terrain)
 
         # setting world boundaries
-        self.terrain[0] = self.terrain[dim - 1] = obstacle
-        self.terrain[:, 0] = self.terrain[:, dim - 1] = obstacle
+        for i in range(self.border):
+            self.terrain[i] = self.terrain[dim - i - 1] = obstacle
+            self.terrain[:, i] = self.terrain[:, dim - i - 1] = obstacle
 
         # generate game objects
         self.objects = np.full((dim, dim), None, dtype=GameObject)
@@ -422,9 +433,25 @@ class Game:
         if self._game_over_condition():
             self.over = True
 
+        self._update_scouting()
+
         self._update_camera_position()
 
         return self.get_state(), reward
+
+    def _update_scouting(self):
+        hero = self.hero
+        def approx_scouting_range(hero_coord):
+            _min = max(0, hero_coord - math.ceil(hero.scouting))
+            _max = min(self.world_size, hero_coord + math.ceil(hero.scouting) + 1)
+            return range(_min, _max)
+        range_i = approx_scouting_range(hero.pos.i)
+        range_j = approx_scouting_range(hero.pos.j)
+
+        for i in range_i:
+            for j in range_j:
+                if self.fog_of_war[i, j] > 0 and hero.within_scouting_range(i, j):
+                    self.fog_of_war[i, j] = 0
 
     def _update_camera_position(self):
         def update_coord(pos, hero_pos):
@@ -444,9 +471,12 @@ class Game:
         max_i = min(self.world_size, min_i + self.view_size)
         max_j = min(self.world_size, min_j + self.view_size)
 
-        surface.fill(Obstacle._color())
+        surface.fill((9, 5, 6))
         for i in range(min_i, max_i):
             for j in range(min_j, max_j):
+                if self.fog_of_war[i, j] > 0:
+                    continue
+
                 self.terrain[i, j].draw(self, surface, Vec(i, j) - camera, scale)
                 obj = self.objects[i, j]
                 if obj is not None:
