@@ -206,7 +206,7 @@ class Action:
 
 class Game:
     border = 1
-    max_num_steps = 30
+    max_num_steps = 40
 
     def __init__(self, windowless=False, world_size=6, view_size=6, resolution=500):
         self.num_steps = 0
@@ -233,10 +233,15 @@ class Game:
         while self.screen_scale * dim < resolution:
             self.screen_scale += 1
 
-        self.screen_size = self.screen_scale * dim
         self.screen = None
         if not windowless:
-            self.screen = pygame.display.set_mode((self.screen_size, self.screen_size))
+            self.screen_size_world = self.screen_scale * dim
+            ui_size = min(200, resolution // 3)
+            screen_w = self.screen_size_world + ui_size
+            screen_h = self.screen_size_world
+            self.screen = pygame.display.set_mode((screen_w, screen_h))
+            self.font = pygame.font.SysFont(None, resolution // 25)
+            self.ui_surface = pygame.Surface((ui_size, screen_h))
         self.clock = pygame.time.Clock()
 
     def reset(self):
@@ -408,8 +413,20 @@ class Game:
         self.hero.draw(self, surface, self.hero.pos, scale)
 
     def _render_info(self):
-        # TODO render info
-        pass
+        self.ui_surface.fill((39, 40, 34))
+        text_color = (248, 248, 242)
+        text_items = [
+            'Movepoints: ' + str(self.hero.movepoints),
+            'Gold: ' + str(self.hero.money),
+            'Time left: ' + str(self.max_num_steps - self.num_steps),
+        ]
+        offset = self.screen.get_height() // 100
+        x_offset = y_offset = offset
+        for text in text_items:
+            label = self.font.render(text, 1, text_color)
+            self.ui_surface.blit(label, (x_offset, y_offset))
+            y_offset += label.get_height() + offset
+        self.screen.blit(self.ui_surface, (self.screen_size_world, 0))
 
     @staticmethod
     def _draw_tile(surface, pos, color, scale):

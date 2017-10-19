@@ -3,6 +3,8 @@ import sys
 import logging
 import argparse
 
+import pygame
+
 from utils import *
 
 from micro_tbs import Game
@@ -26,6 +28,7 @@ def parse_args():
 def main():
     """Script entry point."""
     init_logger(os.path.basename(__file__))
+    pygame.init()
 
     args = parse_args()
     logger.info('Args: %r', args)

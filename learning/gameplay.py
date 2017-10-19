@@ -2,6 +2,8 @@ import os
 import sys
 import logging
 
+import pygame
+
 from utils import *
 
 from micro_tbs import Game
@@ -13,6 +15,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 def main():
     """Script entry point."""
     init_logger(os.path.basename(__file__))
+    pygame.init()
 
     game = Game()
 

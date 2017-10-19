@@ -1,4 +1,3 @@
-import numpy as np
 import tensorflow as tf
 
 from utils import *
@@ -121,7 +120,7 @@ class AgentDqn(Agent):
         self.memory = ReplayMemory()
         self.exploration_strategy = EpsilonGreedy()
 
-        self.target_update_speed = 0.1  # rate to update target DQN towards primary DQN
+        self.target_update_speed = 0.2  # rate to update target DQN towards primary DQN
         gamma = 0.98  # future reward discount
 
         num_actions = len(allowed_actions)
