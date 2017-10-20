@@ -72,7 +72,7 @@ class Road(Terrain):
 class Swamp(Terrain):
     @staticmethod
     def _color():
-        return (54, 96, 58)
+        return (67, 70, 40)
 
     @staticmethod
     def penalty():
@@ -132,6 +132,53 @@ class GoldPile(GameObject):
         return (255, 191, 0)
 
 
+class Stables(GameObject):
+    def __init__(self):
+        super(Stables, self).__init__()
+        self.cost = 500
+        self.movepoints = 500
+        self.visited = {}
+
+    def interact(self, game):
+        visited = self.visited.get(game.hero.team, False)
+        if not visited and game.hero.money >= self.cost:
+            game.hero.money -= self.cost
+            game.hero.change_movepoints(self.movepoints)
+            self.visited[game.hero.team] = True
+        return 0
+
+    @staticmethod
+    def can_be_visited():
+        return True
+
+    @staticmethod
+    def _color():
+        return (111, 84, 55)
+
+
+class LookoutTower(GameObject):
+    def __init__(self):
+        super(LookoutTower, self).__init__()
+        self.cost = 1000
+        self.visited = {}
+
+    def interact(self, game):
+        visited = self.visited.get(game.hero.team, False)
+        if not visited and game.hero.money >= self.cost:
+            game.hero.money -= self.cost
+            game._update_scouting(scouting=(game.hero.scouting * 3))
+            self.visited[game.hero.team] = True
+        return 0
+
+    @staticmethod
+    def can_be_visited():
+        return True
+
+    @staticmethod
+    def _color():
+        return (57, 120, 140)
+
+
 class Hero(Entity):
     max_teams = 2
     teams = range(max_teams)
@@ -156,25 +203,8 @@ class Hero(Entity):
         self.movepoints += delta
         self.movepoints = max(0, self.movepoints)
 
-    def within_scouting_range(self, i, j):
-        return self.pos.dist_sq(Vec(i, j)) <= (self.scouting ** 2) + 1e-5
-
-
-# class Tile:
-#     # terrain
-#     ground = 0
-#     obstacle = 1
-#     road = 2
-#     swamp = 3
-
-#     # resources
-#     gold = 20
-
-#     # objects
-#     castle = 40
-#     army_dwell = 41
-#     lookout_tower = 42
-#     stables = 43
+    def within_scouting_range(self, i, j, scouting):
+        return self.pos.dist_sq(Vec(i, j)) <= (scouting ** 2)
 
 
 class Action:
@@ -210,9 +240,9 @@ class Action:
 
 
 class Game:
-    max_num_steps = 400
+    max_num_steps = 1000
 
-    def __init__(self, windowless=False, world_size=30, view_size=14, resolution=700):
+    def __init__(self, windowless=False, world_size=30, view_size=12, resolution=700):
         self.num_steps = 0
         self.over = False
         self.quit = False
@@ -277,7 +307,7 @@ class Game:
                 logger.info('World generation failed, try again...')
                 continue
 
-            start_movepoints = 100 * dim * dim / 2
+            start_movepoints = 100 * dim * dim / 4
             self.hero = Hero(team=Hero.team_red, start_movepoints=start_movepoints)
             hero_pos_idx = random.randrange(len(unoccupied_cells))
             self.hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
@@ -307,22 +337,38 @@ class Game:
             self.terrain[:, i] = self.terrain[:, dim - i - 1] = obstacle
 
         # generate game objects
-        self.objects = np.full((dim, dim), None, dtype=GameObject)
-        num_gold_piles = random.randint(1, int(dim * dim * 0.45))
-
-        def random_coord():
-            return random.randrange(self.border, dim - self.border)
-        def random_pos():
-            return (random_coord(), random_coord())
-
-        for _ in range(num_gold_piles):
-            self.objects[random_pos()] = GoldPile()
-
-        obj_list = self.objects.flatten().tolist()
-        self.num_gold_piles = sum((isinstance(obj, GoldPile) for obj in obj_list))
+        self._generate_objects()
 
         # generate terrain
         self._generate_terrain((obstacle, swamp))
+
+    def _generate_objects(self):
+        dim = self.world_size
+        self.objects = np.full((dim, dim), None, dtype=GameObject)
+
+        min_max_count_per_100_cells = {
+            GoldPile: (1, 33),
+            Stables: (0.5, 1),
+            LookoutTower: (0.33, 1),
+        }
+
+        probability = {}
+        for obj_type, count_range in min_max_count_per_100_cells.items():
+            approx_count_per_100 = random.uniform(*count_range)
+            probability[obj_type] = approx_count_per_100 / 100.0
+
+        obj_types = list(min_max_count_per_100_cells.keys())
+        np.random.shuffle(obj_types)
+        for i in range(dim):
+            for j in range(dim):
+                if not isinstance(self.terrain[i, j], Ground):
+                    continue
+                for obj_type in obj_types:
+                    if random.random() < probability[obj_type]:
+                        self.objects[i, j] = obj_type()
+                        if obj_type == GoldPile:
+                            self.num_gold_piles += 1
+                        break
 
     def _generate_terrain(self, terrain):
         dim = self.world_size
@@ -439,23 +485,26 @@ class Game:
 
         return self.get_state(), reward
 
-    def _update_scouting(self):
+    def _update_scouting(self, scouting=None):
         hero = self.hero
+        if scouting is None:
+            scouting = hero.scouting
+
         def approx_scouting_range(hero_coord):
-            _min = max(0, hero_coord - math.ceil(hero.scouting))
-            _max = min(self.world_size, hero_coord + math.ceil(hero.scouting) + 1)
+            _min = max(0, hero_coord - math.ceil(scouting))
+            _max = min(self.world_size, hero_coord + math.ceil(scouting) + 1)
             return range(_min, _max)
         range_i = approx_scouting_range(hero.pos.i)
         range_j = approx_scouting_range(hero.pos.j)
 
         for i in range_i:
             for j in range_j:
-                if self.fog_of_war[i, j] > 0 and hero.within_scouting_range(i, j):
+                if self.fog_of_war[i, j] > 0 and hero.within_scouting_range(i, j, scouting):
                     self.fog_of_war[i, j] = 0
 
     def _update_camera_position(self):
         def update_coord(pos, hero_pos):
-            min_offset = self.view_size // 4
+            min_offset = (self.view_size // 2) - 1
             pos = min(pos, hero_pos - min_offset)
             pos = max(pos, hero_pos + min_offset - self.view_size)
             pos = min(pos, self.world_size - self.view_size)
