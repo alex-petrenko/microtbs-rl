@@ -8,7 +8,7 @@ import pygame
 from utils import *
 
 from micro_tbs import Game
-from agent_dqn import AgentDqn, preprocess_state
+from agent_dqn import AgentDqn
 
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -37,7 +37,7 @@ def main():
     game = Game(windowless=train)
     state = game.reset()
 
-    agent = AgentDqn(game.allowed_actions(), preprocess_state(state))
+    agent = AgentDqn(game.allowed_actions(), state)
     agent.initialize()
 
     num_episodes = 0

@@ -10,11 +10,6 @@ from replay_memory import ReplayMemory
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def preprocess_state(input_state):
-    """Convert state dictionary to multichannel numpy array."""
-    return input_state['visual_state']
-
-
 class DeepQNetwork:
     def __init__(self, size, channels, num_actions, name):
         self.name = name
@@ -44,27 +39,46 @@ class DeepQNetwork:
                     biases_regularizer=regularizer,
                 )
 
-            self.state_input = tf.placeholder(
+            # process visual state
+            self.visual_state = tf.placeholder(
                 tf.float32,
                 shape=(None, size, size, channels),
             )
 
-            conv1 = conv(self.state_input, 16, 4)
+            conv1 = conv(self.visual_state, 16, 4)
             conv2 = conv(conv1, 16, 3)
             drop2 = tf.nn.dropout(conv2, self.keep_prob)
             conv3 = conv(drop2, 32, 3)
             flat3 = tf.contrib.layers.flatten(conv3)
 
-            fc1 = fully_connected(flat3, 128)
-            fc2 = fully_connected(fc1, 128)
+            # process non-visual state
+            self.movepoints = tf.placeholder(tf.float32, shape=[None])
+            self.money = tf.placeholder(tf.float32, shape=[None])
+            self.remaining_steps = tf.placeholder(tf.float32, shape=[None])
+
+            numeric_features_raw = [self.movepoints, self.money, self.remaining_steps]
+            numeric_features_log = [
+                tf.expand_dims(tf.log(f + 1.0), axis=1) for f in numeric_features_raw
+            ]
+            numeric_features = tf.concat(numeric_features_log, axis=1)
+            numeric_features_fc = tf.contrib.layers.fully_connected(
+                numeric_features,
+                len(numeric_features_raw) * 16,
+                activation_fn=tf.nn.tanh,
+            )
+
+            full_input = tf.concat([flat3, numeric_features_fc], axis=1)
+
+            fc1 = fully_connected(full_input, 256)
+            fc2 = fully_connected(fc1, 256)
 
             # "dueling" DQN trick
             with tf.variable_scope('dueling'):
                 # "value" means how good or bad current state is
-                value_fc = fully_connected(fc2, 128)
+                value_fc = fully_connected(fc2, 256)
                 value = tf.contrib.layers.fully_connected(value_fc, 1, activation_fn=None)
 
-                advantage_fc = fully_connected(fc2, 128)
+                advantage_fc = fully_connected(fc2, 256)
                 advantage = tf.contrib.layers.fully_connected(
                     advantage_fc, num_actions, activation_fn=None,
                 )
@@ -116,6 +130,8 @@ class AgentDqn(Agent):
     def __init__(self, allowed_actions, game_state):
         super(AgentDqn, self).__init__(allowed_actions)
 
+        visual_state = game_state['visual_state']
+
         self.session = None  # actually created in "initialize" method
         self.memory = ReplayMemory()
         self.exploration_strategy = EpsilonGreedy()
@@ -124,10 +140,10 @@ class AgentDqn(Agent):
         gamma = 0.98  # future reward discount
 
         num_actions = len(allowed_actions)
-        assert game_state.ndim == 3
-        assert game_state.shape[0] == game_state.shape[1]
-        input_size = game_state.shape[0]
-        input_channels = game_state.shape[2]
+        assert visual_state.ndim == 3
+        assert visual_state.shape[0] == visual_state.shape[1]
+        input_size = visual_state.shape[0]
+        input_channels = visual_state.shape[2]
 
         global_step = tf.contrib.framework.get_or_create_global_step()
 
@@ -223,6 +239,16 @@ class AgentDqn(Agent):
 
         logger.info('Initialized!')
 
+    @staticmethod
+    def _feed_state(state_batch, dqn):
+        non_visual = [s['non_visual_state'] for s in state_batch]
+        return {
+            dqn.visual_state: [s['visual_state'] for s in state_batch],
+            dqn.movepoints: [s['movepoints'] for s in non_visual],
+            dqn.money: [s['money'] for s in non_visual],
+            dqn.remaining_steps: [s['remaining_steps'] for s in non_visual],
+        }
+
     def _generate_target_update_ops(self):
         primary_trainables = self.primary_dqn.get_trainable_variables()
         target_trainables = self.target_dqn.get_trainable_variables()
@@ -256,20 +282,19 @@ class AgentDqn(Agent):
             self.action,
             feed_dict={
                 self.primary_dqn.keep_prob: 1,
-                self.primary_dqn.state_input: state_batch,
+                **self._feed_state(state_batch, self.primary_dqn),
             },
         )
         return action_idx
 
     def act(self, state):
-        action_idx = self._best_action([preprocess_state(state)])
+        action_idx = self._best_action([state])
         action = self.allowed_actions[action_idx[0]]
         logger.info('Selected action: %r', action)
         return action
 
-    def _explore(self, env, curr_state):
+    def _explore(self, env, state):
         step = tf.train.global_step(self.session, tf.train.get_global_step())
-        state = preprocess_state(curr_state)
 
         action_idx = self.exploration_strategy.action(
             step=step,
@@ -289,7 +314,7 @@ class AgentDqn(Agent):
             self.target_dqn.Q_best,
             feed_dict={
                 self.target_dqn.keep_prob: 1,
-                self.target_dqn.state_input: new_state,
+                **self._feed_state(new_state, self.target_dqn),
             },
         )
 
@@ -303,11 +328,11 @@ class AgentDqn(Agent):
             train_ops,
             feed_dict={
                 self.primary_dqn.keep_prob: 0.8,
-                self.primary_dqn.state_input: state,
                 self.reward: reward,
                 self.selected_action: action_idx,
                 self.Q_target: Q_new_state,
                 self.exploration_placeholder: self.exploration_strategy.exploration_prob(step),
+                **self._feed_state(state, self.primary_dqn),
             },
         )
 
@@ -320,12 +345,12 @@ class AgentDqn(Agent):
 
     def update(self, env, curr_state):
         state, action_idx, new_state, reward = self._explore(env, curr_state)
-        self._update_step([state], [action_idx], [preprocess_state(new_state)], [reward])
+        self._update_step([state], [action_idx], [new_state], [reward])
         return new_state
 
     def explore_and_remember(self, env, curr_state):
         state, action_idx, new_state, reward = self._explore(env, curr_state)
-        self.memory.remember((state, action_idx, preprocess_state(new_state), reward))
+        self.memory.remember((state, action_idx, new_state, reward))
         return new_state
 
     def update_with_replay_memory(self):

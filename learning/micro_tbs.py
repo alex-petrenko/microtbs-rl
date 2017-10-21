@@ -240,7 +240,7 @@ class Action:
 
 
 class Game:
-    max_num_steps = 1000
+    max_num_steps = 100
 
     def __init__(self, windowless=False, world_size=30, view_size=12, resolution=700):
         self.num_steps = 0
