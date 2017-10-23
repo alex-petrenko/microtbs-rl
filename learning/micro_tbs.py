@@ -1,14 +1,9 @@
-import os
-import math
 import random
-import logging
-
-import pygame
 
 import numpy as np
+import pygame
 
 from utils import *
-
 
 # pylint: disable=protected-access
 
@@ -28,16 +23,17 @@ class Entity:
     @staticmethod
     def _color():
         """Default color, should be overridden."""
-        return (255, 0, 255)
+        return 255, 0, 255
 
     def draw(self, game, surface, pos, scale):
-        game._draw_tile(surface, pos, self._color(), scale)
+        game.draw_tile(surface, pos, self._color(), scale)
 
 
 class Terrain(Entity):
     @staticmethod
     def reachable():
         return True
+
     @staticmethod
     def penalty():
         return 1.0
@@ -46,7 +42,7 @@ class Terrain(Entity):
 class Ground(Terrain):
     @staticmethod
     def _color():
-        return (39, 40, 34)
+        return 39, 40, 34
 
 
 class Obstacle(Terrain):
@@ -56,13 +52,13 @@ class Obstacle(Terrain):
 
     @staticmethod
     def _color():
-        return (73, 66, 58)
+        return 73, 66, 58
 
 
 class Road(Terrain):
     @staticmethod
     def _color():
-        return (174, 113, 92)
+        return 174, 113, 92
 
     @staticmethod
     def penalty():
@@ -72,7 +68,7 @@ class Road(Terrain):
 class Swamp(Terrain):
     @staticmethod
     def _color():
-        return (67, 70, 40)
+        return 67, 70, 40
 
     @staticmethod
     def penalty():
@@ -83,7 +79,7 @@ class GameObject(Entity):
     def __init__(self):
         self.disappear = False
 
-    def interact(self, game):  # pylint: disable=no-self-use,unused-argument
+    def interact(self, game):
         """Returns reward."""
         return 0
 
@@ -109,7 +105,7 @@ class GameObject(Entity):
     @staticmethod
     def _color():
         """Default color, should be overridden."""
-        return (255, 0, 255)
+        return 255, 0, 255
 
 
 class GoldPile(GameObject):
@@ -129,7 +125,7 @@ class GoldPile(GameObject):
 
     @staticmethod
     def _color():
-        return (255, 191, 0)
+        return 255, 191, 0
 
 
 class Stables(GameObject):
@@ -153,7 +149,7 @@ class Stables(GameObject):
 
     @staticmethod
     def _color():
-        return (111, 84, 55)
+        return 111, 84, 55
 
 
 class LookoutTower(GameObject):
@@ -166,7 +162,7 @@ class LookoutTower(GameObject):
         visited = self.visited.get(game.hero.team, False)
         if not visited and game.hero.money >= self.cost:
             game.hero.money -= self.cost
-            game._update_scouting(scouting=(game.hero.scouting * 3))
+            game.update_scouting(scouting=(game.hero.scouting * 3))
             self.visited[game.hero.team] = True
         return 0
 
@@ -176,7 +172,7 @@ class LookoutTower(GameObject):
 
     @staticmethod
     def _color():
-        return (57, 120, 140)
+        return 57, 120, 140
 
 
 class Hero(Entity):
@@ -257,7 +253,6 @@ class Game:
 
         self.hero = None
 
-        # pylint: disable=too-many-function-args
         self.state_surface = pygame.Surface((self.view_size, self.view_size))
 
         # reset the game world
@@ -310,7 +305,7 @@ class Game:
             hero_pos_idx = random.randrange(len(unoccupied_cells))
             self.hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
 
-        self._update_scouting()
+        self.update_scouting()
 
         # setup camera
         camera_i = max(0, self.hero.pos.i - self.view_size // 2)
@@ -477,13 +472,13 @@ class Game:
         if self._game_over_condition():
             self.over = True
 
-        self._update_scouting()
+        self.update_scouting()
 
         self._update_camera_position()
 
         return self.get_state(), reward
 
-    def _update_scouting(self, scouting=None):
+    def update_scouting(self, scouting=None):
         hero = self.hero
         if scouting is None:
             scouting = hero.scouting
@@ -529,8 +524,8 @@ class Game:
                 if obj is not None:
                     obj.draw(self, surface, Vec(i, j) - camera, scale)
 
-        assert self.hero.pos.i >= min_i and self.hero.pos.i < max_i
-        assert self.hero.pos.j >= min_j and self.hero.pos.j < max_j
+        assert min_i <= self.hero.pos.i < max_i
+        assert min_j <= self.hero.pos.j < max_j
         self.hero.draw(self, surface, self.hero.pos - camera, scale)
 
     def _render_info(self):
@@ -554,7 +549,7 @@ class Game:
         pygame.draw.line(self.screen, col, (w, 0), (w, h), 2)
 
     @staticmethod
-    def _draw_tile(surface, pos, color, scale):
+    def draw_tile(surface, pos, color, scale):
         rect = pygame.Rect(pos.x * scale, pos.y * scale, scale, scale)
         pygame.draw.rect(surface, color, rect)
 

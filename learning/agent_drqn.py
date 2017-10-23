@@ -1,12 +1,10 @@
 import numpy as np
-import tensorflow as tf
 
 from utils import *
-from dnn_utils import *
 from agent import Agent
+from dnn_utils import *
 from exploration import EpsilonGreedy
 from replay_memory import ReplayMemory
-
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -22,18 +20,18 @@ class DRQNetwork:
             else:
                 regularizer = None
 
-            def fully_connected(x, size):
+            def fully_connected(x, layer_size):
                 return tf.contrib.layers.fully_connected(
                     x,
-                    size,
+                    layer_size,
                     weights_regularizer=regularizer,
                     biases_regularizer=regularizer,
                 )
 
-            def conv(x, size, kernel_size, stride=1):
+            def conv(x, num_filters, kernel_size, stride=1):
                 return tf.contrib.layers.conv2d(
                     x,
-                    size,
+                    num_filters,
                     kernel_size,
                     stride=stride,
                     weights_regularizer=regularizer,
@@ -134,7 +132,7 @@ class DRQNetwork:
 
 
 class DRQNetworkTarget(DRQNetwork):
-    """This network is not trained, just occasionnally updated with regular DQN weights."""
+    """This network is not trained, just occasionally updated with regular DQN weights."""
     @staticmethod
     def _with_summaries():
         return False

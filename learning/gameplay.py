@@ -1,13 +1,7 @@
-import os
-import sys
-import logging
-
 import pygame
 
-from utils import *
-
 from micro_tbs import Game
-
+from utils import *
 
 logger = logging.getLogger(os.path.basename(__file__))
 

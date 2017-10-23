@@ -42,7 +42,6 @@ class ReplayMemory:
                 point_in_episode = random.randint(0, length - temporal_rollout)
 
             end_point = point_in_episode + temporal_rollout
-            # pylint: disable=unsubscriptable-object
             rollout = episode[point_in_episode:end_point]
             batch.extend(rollout)
 

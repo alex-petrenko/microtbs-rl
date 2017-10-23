@@ -8,7 +8,6 @@ from os.path import join
 
 
 EPS = 1e-5
-
 LOGGING_FOLDER = 'C:/temp/py_logging'  # use environment variable instead?
 
 
@@ -35,7 +34,7 @@ class Vec:
 
     @property
     def ij(self):
-        return (self.i, self.j)
+        return self.i, self.j
 
     def __neg__(self):
         return Vec(-self.i, -self.j)
@@ -56,7 +55,9 @@ class Vec:
 # Helper functions
 
 def bp():
-    import ipdb; ipdb.set_trace()
+    import ipdb
+    ipdb.set_trace()
+
 
 def init_logger(script_name):
     """Initialize logging facilities for particular script."""
