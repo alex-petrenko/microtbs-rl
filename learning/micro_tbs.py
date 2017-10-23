@@ -93,7 +93,7 @@ class GameObject(Entity):
         can_be_visited is True if we can "step" on the object, False otherwise.
         E.g. when we interact with a pile of gold, we can't step on it, we just collect it and
         then it disappears and the hero takes it's place.
-        Staples or lookout towers, on the other hand, can be genuinely "visited".
+        Stables or lookout towers, on the other hand, can be genuinely "visited".
 
         """
         return False
@@ -136,7 +136,7 @@ class Stables(GameObject):
     def __init__(self):
         super(Stables, self).__init__()
         self.cost = 500
-        self.movepoints = 500
+        self.movepoints = 750
         self.visited = {}
 
     def interact(self, game):
@@ -209,10 +209,9 @@ class Hero(Entity):
 
 class Action:
     all_actions = range(9)
-    noop, up, right, down, left, ul, ur, dl, dr = all_actions
+    up, right, down, left, ul, ur, dl, dr, noop = all_actions
 
     movement = {
-        noop: (0, 0),
         up: (-1, 0),
         right: (0, 1),
         down: (1, 0),
@@ -221,6 +220,7 @@ class Action:
         ur: (-1, 1),
         dl: (1, -1),
         dr: (1, 1),
+        noop: (0, 0),
     }
 
     manhattan_to_euclid = {
@@ -240,10 +240,7 @@ class Action:
 
 
 class Game:
-    max_num_steps = 100
-
     def __init__(self, windowless=False, world_size=30, view_size=12, resolution=700):
-        self.num_steps = 0
         self.over = False
         self.quit = False
         self.key_down = False
@@ -284,7 +281,6 @@ class Game:
 
     def reset(self):
         """Generate the new game."""
-        self.num_steps = 0
         self.over = False
         self.key_down = False
 
@@ -307,7 +303,9 @@ class Game:
                 logger.info('World generation failed, try again...')
                 continue
 
-            start_movepoints = 100 * dim * dim / 4
+            min_movepoints = 4500
+            max_movepoints = 100 * dim * 4
+            start_movepoints = random.randint(min_movepoints, max_movepoints)
             self.hero = Hero(team=Hero.team_red, start_movepoints=start_movepoints)
             hero_pos_idx = random.randrange(len(unoccupied_cells))
             self.hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
@@ -400,7 +398,10 @@ class Game:
 
     @staticmethod
     def allowed_actions():
-        return Action.all_actions
+        # remove noop for the RL agents, keep it only for human version
+        actions = list(Action.all_actions)
+        actions.remove(Action.noop)
+        return actions
 
     def process_events(self):
         events = []
@@ -436,8 +437,6 @@ class Game:
     def _lose_condition(self):
         if self.hero.movepoints == 0:
             return True
-        if self.num_steps >= self.max_num_steps:
-            return True
         return False
 
     def _game_over_condition(self):
@@ -445,7 +444,6 @@ class Game:
 
     def step(self, action):
         """Returns tuple (new_state, reward)."""
-        self.num_steps += 1
         new_pos = self.hero.pos + Action.delta(action)
         reward = 0
 
@@ -541,7 +539,6 @@ class Game:
         text_items = [
             'Movepoints: ' + str(self.hero.movepoints),
             'Gold: ' + str(self.hero.money),
-            'Time left: ' + str(self.max_num_steps - self.num_steps),
         ]
         offset = self.screen.get_height() // 50
         x_offset = y_offset = offset
@@ -571,7 +568,6 @@ class Game:
         return {
             'movepoints': self.hero.movepoints,
             'money': self.hero.money,
-            'remaining_steps': self.max_num_steps - self.num_steps,
         }
 
     def get_state(self):

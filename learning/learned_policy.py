@@ -8,7 +8,7 @@ import pygame
 from utils import *
 
 from micro_tbs import Game
-from agent_dqn import AgentDqn
+from agent_drqn import AgentDrqn
 
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -37,25 +37,31 @@ def main():
     game = Game(windowless=train)
     state = game.reset()
 
-    agent = AgentDqn(game.allowed_actions(), state)
+    agent = AgentDrqn(game.allowed_actions(), state)
     agent.initialize()
 
     num_episodes = 0
     while not game.should_quit():
         state = game.reset()
         num_episodes += 1
+        agent.on_new_episode()
+
         if num_episodes % 10 == 0:
             logger.info('Episode: %r', num_episodes)
 
         while not game.is_over():
             if train:
-                state = agent.update(game, state)
+                state = agent.explore(game, state)
             else:
                 game.process_events()
                 action = agent.act(state)
                 state, _ = game.step(action)
                 game.render()
                 game.clock.tick(5)
+
+        if train:
+            for _ in range(40):
+                agent.update()
 
     logger.info('Exiting...')
 

@@ -1,4 +1,4 @@
-import numpy as np
+import random
 
 from utils import *
 
@@ -8,28 +8,43 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 class ReplayMemory:
     def __init__(self):
-        self.batch_size = 256
-        self.store_max_batches = 1000
-        self.storage = []
+        self.store_max_episodes = 10000
+        self.episodes = []
 
     def good_enough(self):
-        min_memory = self.batch_size * 50
-        if len(self.storage) < min_memory:
-            if len(self.storage) % 10 == 0:
-                logger.info('Gaining experience, %r/%r', len(self.storage), min_memory)
+        min_memory = 30
+        if len(self.episodes) < min_memory:
             return False
         return True
 
     def remember(self, experience):
-        self.storage.append(experience)
+        self.episodes.append(experience)
         self.forget()
 
     def forget(self):
-        while len(self.storage) > self.batch_size * self.store_max_batches:
-            self.storage.pop(0)
+        while len(self.episodes) > self.store_max_episodes:
+            idx_to_delete = random.randrange(0, len(self.episodes))
+            self.episodes.pop(idx_to_delete)
 
-    def recollect(self):
-        indices = np.random.choice(len(self.storage), self.batch_size, replace=False)
-        batch = [self.storage[i] for i in indices]
+    def recollect(self, batch_size, temporal_rollout):
+        batch = []
+        while len(batch) < batch_size * temporal_rollout:
+            episode = random.sample(self.episodes, 1)[0]
+            if len(episode) < temporal_rollout:
+                logger.info('Episode is too short! %d/%d', len(episode), temporal_rollout)
+                continue
+
+            tail_probability = 0.2
+            length = len(episode)
+            if random.random() < tail_probability:
+                point_in_episode = length - temporal_rollout
+            else:
+                point_in_episode = random.randint(0, length - temporal_rollout)
+
+            end_point = point_in_episode + temporal_rollout
+            # pylint: disable=unsubscriptable-object
+            rollout = episode[point_in_episode:end_point]
+            batch.extend(rollout)
+
         batch = tuple(zip(*batch))
         return batch
