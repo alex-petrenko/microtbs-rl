@@ -124,4 +124,5 @@ ENV/
 *.pickle
 .sessions/
 .summary/
+.profile/
 .hyperopt*

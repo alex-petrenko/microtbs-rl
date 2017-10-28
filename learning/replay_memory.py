@@ -12,7 +12,7 @@ class ReplayMemory:
         self.episodes = []
 
     def good_enough(self):
-        min_memory = 30
+        min_memory = 50
         if len(self.episodes) < min_memory:
             return False
         return True
@@ -26,7 +26,7 @@ class ReplayMemory:
             idx_to_delete = random.randrange(0, len(self.episodes))
             self.episodes.pop(idx_to_delete)
 
-    def recollect(self, batch_size, temporal_rollout):
+    def recollect(self, batch_size, temporal_rollout=1):
         batch = []
         while len(batch) < batch_size * temporal_rollout:
             episode = random.sample(self.episodes, 1)[0]
@@ -34,13 +34,7 @@ class ReplayMemory:
                 logger.info('Episode is too short! %d/%d', len(episode), temporal_rollout)
                 continue
 
-            tail_probability = 0.2
-            length = len(episode)
-            if random.random() < tail_probability:
-                point_in_episode = length - temporal_rollout
-            else:
-                point_in_episode = random.randint(0, length - temporal_rollout)
-
+            point_in_episode = random.randint(0, len(episode) - temporal_rollout)
             end_point = point_in_episode + temporal_rollout
             rollout = episode[point_in_episode:end_point]
             batch.extend(rollout)

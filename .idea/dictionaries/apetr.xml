@@ -1,6 +1,7 @@
 <component name="ProjectDictionaryState">
   <dictionary name="apetr">
     <words>
+      <w>argparse</w>
       <w>asctime</w>
       <w>conv</w>
       <w>drqn</w>
@@ -9,6 +10,7 @@
       <w>lstm</w>
       <w>movepoints</w>
       <w>msecs</w>
+      <w>noop</w>
       <w>pylint</w>
       <w>regularizer</w>
       <w>rollout</w>

@@ -18,7 +18,6 @@ def main():
 
         while not game.is_over():
             action = game.process_events()
-            logger.info('Action %d', action)
             game.step(action)
             game.render()
 

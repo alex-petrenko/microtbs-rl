@@ -5,8 +5,6 @@ import pygame
 
 from utils import *
 
-# pylint: disable=protected-access
-
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -20,8 +18,7 @@ DJ = (0, 1, 0, -1)
 # Various types used in the game
 
 class Entity:
-    @staticmethod
-    def _color():
+    def _color(self):
         """Default color, should be overridden."""
         return 255, 0, 255
 
@@ -40,8 +37,7 @@ class Terrain(Entity):
 
 
 class Ground(Terrain):
-    @staticmethod
-    def _color():
+    def _color(self):
         return 39, 40, 34
 
 
@@ -50,24 +46,12 @@ class Obstacle(Terrain):
     def reachable():
         return False
 
-    @staticmethod
-    def _color():
+    def _color(self):
         return 73, 66, 58
 
 
-class Road(Terrain):
-    @staticmethod
-    def _color():
-        return 174, 113, 92
-
-    @staticmethod
-    def penalty():
-        return 0.5
-
-
 class Swamp(Terrain):
-    @staticmethod
-    def _color():
+    def _color(self):
         return 67, 70, 40
 
     @staticmethod
@@ -102,8 +86,7 @@ class GameObject(Entity):
         """
         return self.disappear
 
-    @staticmethod
-    def _color():
+    def _color(self):
         """Default color, should be overridden."""
         return 255, 0, 255
 
@@ -123,8 +106,7 @@ class GoldPile(GameObject):
         self.disappear = True
         return reward
 
-    @staticmethod
-    def _color():
+    def _color(self):
         return 255, 191, 0
 
 
@@ -147,8 +129,7 @@ class Stables(GameObject):
     def can_be_visited():
         return True
 
-    @staticmethod
-    def _color():
+    def _color(self):
         return 111, 84, 55
 
 
@@ -170,8 +151,7 @@ class LookoutTower(GameObject):
     def can_be_visited():
         return True
 
-    @staticmethod
-    def _color():
+    def _color(self):
         return 57, 120, 140
 
 
@@ -190,7 +170,7 @@ class Hero(Entity):
         self.team = team
         self.movepoints = start_movepoints
         self.money = start_money
-        self.scouting = 3.5
+        self.scouting = 9.5
 
     def _color(self):
         return self.colors[self.team]
@@ -235,11 +215,19 @@ class Action:
         return penalty * Action.manhattan_to_euclid[move_cells]
 
 
+class GameplayOptions:
+    def __init__(self, diagonal_moves=True):
+        self.diagonal_moves = diagonal_moves
+
+
 class Game:
-    def __init__(self, windowless=False, world_size=30, view_size=12, resolution=700):
+    def __init__(self, options=None, windowless=False, world_size=4, view_size=6, resolution=700):
+        self.options = GameplayOptions() if options is None else options
+
         self.over = False
         self.quit = False
         self.key_down = False
+        self.num_steps = 0
 
         self.view_size = view_size
         self.camera_pos = Vec(0, 0)
@@ -278,6 +266,7 @@ class Game:
         """Generate the new game."""
         self.over = False
         self.key_down = False
+        self.num_steps = 0
 
         self.hero = None
         dim = self.world_size
@@ -298,8 +287,8 @@ class Game:
                 logger.info('World generation failed, try again...')
                 continue
 
-            min_movepoints = 4500
-            max_movepoints = 100 * dim * 4
+            min_movepoints = 100
+            max_movepoints = 100 * dim * 2
             start_movepoints = random.randint(min_movepoints, max_movepoints)
             self.hero = Hero(team=Hero.team_red, start_movepoints=start_movepoints)
             hero_pos_idx = random.randrange(len(unoccupied_cells))
@@ -318,10 +307,14 @@ class Game:
     def _generate_world(self):
         dim = self.world_size
 
+        # reset counters
+        self.num_gold_piles = 0
+
         # initially, everything is covered by fog of war
         self.fog_of_war = np.full((dim, dim), 1, dtype=np.uint8)
 
         ground, obstacle, swamp = Ground(), Obstacle(), Swamp()
+        # noinspection PyTypeChecker
         self.terrain = np.full((dim, dim), ground, dtype=Terrain)
 
         # setting world boundaries
@@ -337,6 +330,7 @@ class Game:
 
     def _generate_objects(self):
         dim = self.world_size
+        # noinspection PyTypeChecker
         self.objects = np.full((dim, dim), None, dtype=GameObject)
 
         min_max_count_per_100_cells = {
@@ -391,11 +385,13 @@ class Game:
     def should_quit(self):
         return self.quit
 
-    @staticmethod
-    def allowed_actions():
-        # remove noop for the RL agents, keep it only for human version
-        actions = list(Action.all_actions)
-        actions.remove(Action.noop)
+    def allowed_actions(self):
+        if self.options.diagonal_moves:
+            # remove noop for the RL agents, keep it only for human version
+            actions = list(Action.all_actions)
+            actions.remove(Action.noop)
+        else:
+            actions = [Action.up, Action.right, Action.down, Action.left]
         return actions
 
     def process_events(self):
@@ -439,6 +435,7 @@ class Game:
 
     def step(self, action):
         """Returns tuple (new_state, reward)."""
+        self.num_steps += 1
         new_pos = self.hero.pos + Action.delta(action)
         reward = 0
 
@@ -497,7 +494,7 @@ class Game:
 
     def _update_camera_position(self):
         def update_coord(pos, hero_pos):
-            min_offset = (self.view_size // 2) - 1
+            min_offset = (self.view_size // 2)
             pos = min(pos, hero_pos - min_offset)
             pos = max(pos, hero_pos + min_offset - self.view_size)
             pos = min(pos, self.world_size - self.view_size)
@@ -505,6 +502,11 @@ class Game:
             return pos
         self.camera_pos.i = update_coord(self.camera_pos.i, self.hero.pos.i)
         self.camera_pos.j = update_coord(self.camera_pos.j, self.hero.pos.j)
+
+        self.camera_pos = Vec(
+            self.world_size // 2 - self.view_size // 2,
+            self.world_size // 2 - self.view_size // 2,
+        )
 
     def _render_game_world(self, surface, scale):
         camera = self.camera_pos

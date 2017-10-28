@@ -1,29 +1,28 @@
-import numpy as np
-
-from utils import *
 from agent import Agent
 from dnn_utils import *
 from exploration import EpsilonGreedy
 from replay_memory import ReplayMemory
+from utils import *
 
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-class DRQNetwork:
+class DeepQNetwork:
     def __init__(self, size, channels, num_actions, name):
         self.name = name
         with tf.variable_scope(self.name):
             self.keep_prob = tf.placeholder(tf.float32)
 
             if self._with_regularization():
-                regularizer = tf.contrib.layers.l2_regularizer(scale=5e-7)
+                regularizer = tf.contrib.layers.l2_regularizer(scale=1e-7)
             else:
                 regularizer = None
 
-            def fully_connected(x, layer_size):
+            def fully_connected(x, layer_size, activation=tf.nn.relu):
                 return tf.contrib.layers.fully_connected(
                     x,
                     layer_size,
+                    activation_fn=activation,
                     weights_regularizer=regularizer,
                     biases_regularizer=regularizer,
                 )
@@ -44,64 +43,44 @@ class DRQNetwork:
                 shape=(None, size, size, channels),
             )
 
-            conv1 = conv(self.visual_state, 16, 3)
+            conv1 = conv(self.visual_state, 16, 4)
             conv2 = conv(conv1, 16, 3)
             drop2 = tf.nn.dropout(conv2, self.keep_prob)
-            flat2 = tf.contrib.layers.flatten(drop2)
+            conv3 = conv(drop2, 32, 3)
+            visual_state_flat = tf.contrib.layers.flatten(conv3)
 
             # process non-visual state
             self.movepoints = tf.placeholder(tf.float32, shape=[None], name='mp')
             self.money = tf.placeholder(tf.float32, shape=[None], name='money')
 
-            numeric_features_raw = [self.movepoints, self.money]
-            numeric_features_log = [
-                tf.expand_dims(tf.log(f + 1.0), axis=1) for f in numeric_features_raw
+            # process non-visual state
+            self.movepoints = tf.placeholder(tf.float32, shape=[None], name='mp')
+            self.money = tf.placeholder(tf.float32, shape=[None], name='money')
+
+            non_visual_raw = [self.movepoints, self.money]
+            non_visual_log = [
+                tf.expand_dims(tf.log(f + 1.0), axis=1) for f in non_visual_raw
             ]
-            numeric_features = tf.concat(numeric_features_log, axis=1)
-            numeric_features_fc = tf.contrib.layers.fully_connected(
-                numeric_features,
-                len(numeric_features_raw) * 16,
-                activation_fn=tf.nn.elu,
-            )
+            non_visual_input = tf.concat(non_visual_log, axis=1)
+            non_visual_fc1 = fully_connected(non_visual_input, 64)
+            non_visual_fc2 = fully_connected(non_visual_fc1, 64)
+            non_visual_fc3 = fully_connected(non_visual_fc2, 64)
+            non_visual_fc4 = fully_connected(non_visual_fc3, 64, activation=tf.nn.tanh)
 
             # visual and non-visual feed together
-            full_input = tf.concat([flat2, numeric_features_fc], axis=1)
+            full_input = tf.concat([visual_state_flat, non_visual_fc4], axis=1)
 
-            # RNN part between convolutions and fc layers
-            self.batch_size = tf.placeholder(dtype=tf.int32, shape=[], name='batch_size')
-            self.rollout = tf.placeholder(dtype=tf.int32, name='rollout')
-
-            self.lstm_num_units = 256
-            rnn_cell = tf.nn.rnn_cell.LSTMCell(self.lstm_num_units)
-            rnn_cell = tf.nn.rnn_cell.DropoutWrapper(
-                rnn_cell, input_keep_prob=self.keep_prob, output_keep_prob=self.keep_prob,
-            )
-            self.rnn_input_state = rnn_cell.zero_state(self.batch_size, tf.float32)
-
-            # reshape [batch_size x units] to [batch_size x rollout x units]
-            input_dim = full_input.shape[1].value
-            rnn_input = tf.reshape(full_input, [self.batch_size, self.rollout, input_dim])
-
-            rnn_output, self.rnn_state = tf.nn.dynamic_rnn(
-                cell=rnn_cell,
-                inputs=rnn_input,
-                dtype=tf.float32,
-                initial_state=self.rnn_input_state,
-            )
-
-            # reshape back to [batch_size x units]
-            rnn_output = tf.reshape(rnn_output, [-1, self.lstm_num_units])
-
-            # feed rnn output into a fully connected layer
-            fc = fully_connected(rnn_output, 256)
+            # "policy" layers
+            fc1 = fully_connected(full_input, 128)
+            fc2 = fully_connected(fc1, 128)
 
             # "dueling" DQN trick
             with tf.variable_scope('dueling'):
                 # "value" means how good or bad current state is
-                value_fc = fully_connected(fc, 128)
+                value_fc = fully_connected(fc2, 128)
                 value = tf.contrib.layers.fully_connected(value_fc, 1, activation_fn=None)
 
-                advantage_fc = fully_connected(fc, 128)
+                advantage_fc = fully_connected(fc2, 128)
                 advantage = tf.contrib.layers.fully_connected(
                     advantage_fc, num_actions, activation_fn=None,
                 )
@@ -109,12 +88,12 @@ class DRQNetwork:
                 # "average" dueling
                 self.Q = value + (advantage - tf.reduce_mean(advantage, axis=1, keep_dims=True))
 
+            self.Q_best = tf.reduce_max(self.Q, axis=1)
+
             # summaries for this particular DNN
             if self._with_summaries():
                 with tf.variable_scope(self.name + '_dqn_summary'):
-                    nf_mean, nf_variance = tf.nn.moments(numeric_features_fc, axes=[0, ])
-                    tf.summary.scalar('numeric_features_mean', nf_mean)
-                    tf.summary.scalar('numeric_features_var', nf_variance)
+                    tf.summary.scalar('non_visual_max', tf.reduce_max(non_visual_fc4))
                     tf.summary.scalar('value', tf.reduce_mean(value))
                     for ac in range(num_actions):
                         tf.summary.histogram('advantage_' + str(ac), advantage[:, ac])
@@ -136,8 +115,8 @@ class DRQNetwork:
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name)
 
 
-class DRQNetworkTarget(DRQNetwork):
-    """This network is not trained, just occasionally updated with regular DQN weights."""
+class DeepQNetworkTarget(DeepQNetwork):
+    """This network is not trained, just occasionnally updated with regular DQN weights."""
     @staticmethod
     def _with_summaries():
         return False
@@ -147,12 +126,12 @@ class DRQNetworkTarget(DRQNetwork):
         return False
 
 
-class AgentDrqn(Agent):
+class AgentDqn(Agent):
     _saver_dir = './.sessions'
     _summary_dir = './.summary'
 
     def __init__(self, allowed_actions, game_state):
-        super(AgentDrqn, self).__init__(allowed_actions)
+        super(AgentDqn, self).__init__(allowed_actions)
 
         visual_state = game_state['visual_state']
 
@@ -161,14 +140,10 @@ class AgentDrqn(Agent):
         self.exploration_strategy = EpsilonGreedy()
         self.episode_buffer = []
 
-        # stores LSTM memory between steps
-        self.rnn_state = None
-
-        self.target_update_speed = 0.05  # rate to update target DQN towards primary DQN
+        self.target_update_speed = 0.02  # rate to update target DQN towards primary DQN
         gamma = 0.98  # future reward discount
 
         num_actions = len(allowed_actions)
-        logger.info('Num actions: %d', num_actions)
         assert visual_state.ndim == 3
         assert visual_state.shape[0] == visual_state.shape[1]
         input_size = visual_state.shape[0]
@@ -176,8 +151,8 @@ class AgentDrqn(Agent):
 
         global_step = tf.train.get_or_create_global_step()
 
-        self.primary_dqn = DRQNetwork(input_size, input_channels, num_actions, 'primary')
-        self.target_dqn = DRQNetworkTarget(
+        self.primary_dqn = DeepQNetwork(input_size, input_channels, num_actions, 'primary')
+        self.target_dqn = DeepQNetworkTarget(
             input_size, input_channels, num_actions, 'target',
         )
 
@@ -208,10 +183,8 @@ class AgentDrqn(Agent):
             regularization_loss = tf.reduce_sum(regularization_losses)
             loss = Q_loss + regularization_loss
 
-        with tf.name_scope('optimizer'):
-            lr = tf.Variable(1e-5, trainable=False, name='lr')
-            optimizer = tf.train.AdamOptimizer(learning_rate=lr, beta1=0.85, beta2=0.99)
-            self.train = optimizer.minimize(loss, global_step=global_step)
+        optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+        self.train = optimizer.minimize(loss, global_step=global_step)
 
         # summaries for the agent and the training process
         with tf.name_scope('agent_summary'):
@@ -294,7 +267,7 @@ class AgentDrqn(Agent):
         return update_ops
 
     def _maybe_update_target(self, step):
-        update_every = 100
+        update_every = 250
         if step % update_every == 0:
             self.session.run(self.update_target_ops)
 
@@ -308,6 +281,21 @@ class AgentDrqn(Agent):
             logger.info('Step #%d, saving...', step)
             self.saver.save(self.session, self._saver_path(), global_step=step)
 
+    def _best_action(self, state_batch):
+        action_idx = self.session.run(
+            self.action,
+            feed_dict={
+                self.primary_dqn.keep_prob: 1,
+                **self._feed_state(state_batch, self.primary_dqn),
+            },
+        )
+        return action_idx
+
+    def act(self, state):
+        action_idx = self._best_action([state])
+        action = self.allowed_actions[action_idx[0]]
+        return action
+
     def on_new_episode(self):
         # add the last episode to replay memory
         if self.episode_buffer:
@@ -316,43 +304,13 @@ class AgentDrqn(Agent):
         # empty the episode buffer
         self.episode_buffer = []
 
-        # reset RNN state
-        self.rnn_state = (
-            np.zeros([1, self.primary_dqn.lstm_num_units]),
-            np.zeros([1, self.primary_dqn.lstm_num_units]),
-        )
-
-    def _best_action(self, state_batch, rollout=1, batch_size=1, rnn_state=None):
-        assert batch_size * rollout == len(state_batch)
-        if rnn_state is None:
-            rnn_state = self.rnn_state
-
-        action_idx_batch, new_rnn_state = self.session.run(
-            [self.action, self.primary_dqn.rnn_state],
-            feed_dict={
-                self.primary_dqn.keep_prob: 1,
-                self.primary_dqn.rollout: rollout,
-                self.primary_dqn.batch_size: batch_size,
-                self.primary_dqn.rnn_input_state: rnn_state,
-                **self._feed_state(state_batch, self.primary_dqn),
-            },
-        )
-        return action_idx_batch, new_rnn_state
-
-    def act(self, state):
-        best_action_idx, self.rnn_state = self._best_action([state])
-        action = self.allowed_actions[best_action_idx[0]]
-        logger.info('Selected action: %r', action)
-        return action
-
     def explore(self, env, state):
         step = tf.train.global_step(self.session, tf.train.get_global_step())
 
-        best_action_idx, self.rnn_state = self._best_action([state])
         action_idx = self.exploration_strategy.action(
             step=step,
             explore=self._random_action_idx,
-            exploit=lambda: best_action_idx[0],
+            exploit=lambda: self._best_action([state])[0],
         )
 
         new_state, reward = env.step(self.allowed_actions[action_idx])
@@ -360,66 +318,33 @@ class AgentDrqn(Agent):
         self.episode_buffer.append(experience)
         return new_state
 
-    def update(self):
-        if not self.memory.good_enough():
-            return
-
+    def _update_step(self, state, action_idx, new_state, reward):
         step = tf.train.global_step(self.session, tf.train.get_global_step())
         if step % 1000 == 0:
-            logger.info('Training step: #%d', step)
+            logger.info('Training step: %r', step)
 
-        batch_size = 50
-        temporal_rollout = 4
-        assert self.primary_dqn.lstm_num_units == self.target_dqn.lstm_num_units
-        lstm_num_units = self.primary_dqn.lstm_num_units
-        zero_state = (
-            np.zeros([batch_size, lstm_num_units]),
-            np.zeros([batch_size, lstm_num_units]),
-        )
-
-        batch = self.memory.recollect(batch_size=batch_size, temporal_rollout=temporal_rollout)
-        state, action_idx, new_state, reward = batch
-
-        # select action for the new state with the primary network
-        best_action_new_state, _ = self._best_action(
-            new_state,
-            rollout=temporal_rollout,
-            batch_size=batch_size,
-            rnn_state=zero_state,
-        )
-
-        # find the Q-value of the selected action with the target network
+        # select the best Q-value in the new state
         Q_new_state = self.session.run(
-            self.target_dqn.Q,
+            self.target_dqn.Q_best,
             feed_dict={
                 self.target_dqn.keep_prob: 1,
-                self.target_dqn.rollout: temporal_rollout,
-                self.target_dqn.batch_size: batch_size,
-                self.target_dqn.rnn_input_state: zero_state,
                 **self._feed_state(new_state, self.target_dqn),
             },
         )
 
-        # we're interested only in Q-values for best actions in the new state
-        # this will convert shape from [batch_size x num_actions] to just [batch_size]
-        Q_target = Q_new_state[range(temporal_rollout * batch_size), best_action_new_state]
-
         # prevent summaries folder from growing too large
-        train_ops = [self.train]
+        ops = [self.train]
         with_summaries = (step % 10 == 0)
         if with_summaries:
-            train_ops.append(self.all_summaries)
+            ops.append(self.all_summaries)
 
         result = self.session.run(
-            train_ops,
+            ops,
             feed_dict={
                 self.primary_dqn.keep_prob: 0.8,
-                self.primary_dqn.rollout: temporal_rollout,
-                self.primary_dqn.batch_size: batch_size,
-                self.primary_dqn.rnn_input_state: zero_state,
                 self.reward: reward,
                 self.selected_action: action_idx,
-                self.Q_target: Q_target,
+                self.Q_target: Q_new_state,
                 self.exploration_placeholder: self.exploration_strategy.exploration_prob(step),
                 **self._feed_state(state, self.primary_dqn),
             },
@@ -431,3 +356,9 @@ class AgentDrqn(Agent):
 
         self._maybe_update_target(step)
         self._maybe_save(step)
+
+    def update(self):
+        if not self.memory.good_enough():
+            return  # skip updating until we gain more experience
+        state, action_idx, new_state, reward = self.memory.recollect(batch_size=128)
+        self._update_step(state, action_idx, new_state, reward)
