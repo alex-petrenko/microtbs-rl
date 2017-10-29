@@ -129,7 +129,8 @@ class Stables(GameObject):
             hero.money -= self.cost
             hero.change_movepoints(delta=self.movepoints)
             self.visited[hero.team] = True
-        return game.reward_unit * 10
+            return game.reward_unit * 10
+        return 0
 
     def _can_be_visited_by_hero(self, hero):
         visited = self.visited.get(hero.team, False)
@@ -156,7 +157,7 @@ class Stables(GameObject):
 class LookoutTower(GameObject):
     def __init__(self):
         super(LookoutTower, self).__init__()
-        self.cost = 500
+        self.cost = 100
         self.visited = {}
 
     def interact(self, game, hero):
@@ -164,7 +165,8 @@ class LookoutTower(GameObject):
             hero.money -= self.cost
             game.update_scouting(hero, scouting=(hero.scouting * 3))
             self.visited[hero.team] = True
-        return game.reward_unit * 10
+            return game.reward_unit * 10
+        return 0
 
     def _can_be_visited_by_hero(self, hero):
         visited = self.visited.get(hero.team, False)
@@ -176,6 +178,44 @@ class LookoutTower(GameObject):
 
     def _color(self):
         return 57, 120, 140
+
+    def draw(self, game, surface, pos, scale):
+        """Draw a tile a little bit dimmer if it cannot be visited."""
+        color = self._color()
+        if self._can_be_visited_by_hero(game.current_hero()):
+            color = tuple(int(1.3 * c) for c in color)
+        game.draw_tile(surface, pos, color, scale)
+
+
+class ArmyDwelling(GameObject):
+    def __init__(self):
+        super(ArmyDwelling, self).__init__()
+        self.cost_per_unit = 2000
+        self.num_units_per_day = 2
+        self.num_units = self.num_units_per_day
+
+    def interact(self, game, hero):
+        if self._can_be_visited_by_hero(hero):
+            hero.money -= self.cost_per_unit
+            assert self.num_units > 0
+            self.num_units -= 1
+            hero.army += 1
+            return game.reward_unit * 10
+        return 0
+
+    def _can_be_visited_by_hero(self, hero):
+        return hero.money >= self.cost_per_unit and self.num_units > 0
+
+    @staticmethod
+    def can_be_visited():
+        return True
+
+    def on_new_day(self):
+        """Number of units in the dwelling is restored every day."""
+        self.num_units = self.num_units_per_day
+
+    def _color(self):
+        return 190, 190, 190
 
     def draw(self, game, surface, pos, scale):
         """Draw a tile a little bit dimmer if it cannot be visited."""
@@ -201,6 +241,7 @@ class Hero(Entity):
         self.start_movepoints = start_movepoints
         self.movepoints = start_movepoints
         self.money = start_money
+        self.army = 1  # start with a single unit in the army
         self.scouting = 3.25
 
         # initially, everything hero sees is fog of war
@@ -423,6 +464,7 @@ class Game:
             GoldPile: (1, 20),
             Stables: (0.5, 1),
             LookoutTower: (0.66, 1),
+            ArmyDwelling: (0.66, 1),
         }
 
         probability = {}
@@ -664,7 +706,7 @@ class Game:
 
         # required movepoints
         penalty_coeff = self.terrain[new_pos.ij].penalty()
-        reward -= penalty_coeff * self.reward_unit
+        reward -= penalty_coeff * self.reward_unit  # tiny penalty for every step taken
         action_mp = Action.movepoints(action, penalty_coeff)
 
         can_move = True
@@ -780,6 +822,7 @@ class Game:
             'Team: ' + str(self.current_hero().team),
             'Movepoints: ' + str(hero.movepoints),
             'Gold: ' + str(hero.money),
+            'Army: ' + str(hero.army),
             'Day: ' + str(self.day),
         ]
         offset = self.screen.get_height() // 50
