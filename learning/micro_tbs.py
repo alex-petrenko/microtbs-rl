@@ -1,5 +1,6 @@
-import time
 import random
+
+from collections import deque
 
 import numpy as np
 import pygame
@@ -53,7 +54,7 @@ class Obstacle(Terrain):
 
 class Swamp(Terrain):
     def _color(self):
-        return 67, 70, 40
+        return 56, 73, 5
 
     @staticmethod
     def penalty():
@@ -255,7 +256,7 @@ class GameplayOptions:
     def __init__(self):
         self.diagonal_moves = False
         self.num_teams = 1
-        self.max_days = 3
+        self.max_days = 300
 
     @staticmethod
     def collect_gold_simple():
@@ -273,7 +274,7 @@ class GameplayOptions:
 class Game:
     reward_unit = 0.001
 
-    def __init__(self, gameplay_options=None, windowless=False, world_size=30, view_size=17, resolution=700):
+    def __init__(self, gameplay_options=None, windowless=False, world_size=5, view_size=17, resolution=700):
         self.gameplay = GameplayOptions() if gameplay_options is None else gameplay_options
 
         self.over = False
@@ -327,37 +328,9 @@ class Game:
         self.start_hero_idx = random.randrange(0, self.gameplay.num_teams)
         self.hero_idx = self.start_hero_idx
 
-        dim = self.world_size
-
         while len(self.heroes) < self.gameplay.num_teams:
             self._generate_world()
-
-            # place hero in the world
-            unoccupied_cells = []
-            for i in range(dim):
-                for j in range(dim):
-                    if self.objects[i, j] is not None:
-                        continue
-                    if not self.terrain[i, j].reachable():
-                        continue
-                    unoccupied_cells.append((i, j))
-            if len(unoccupied_cells) < self.gameplay.num_teams:
-                logger.info('World generation failed, try again...')
-                continue
-
-            # equal amount of movepoints for all heroes
-            min_movepoints = 1000
-            max_movepoints = max(min_movepoints, 100 * dim * 2)
-            max_movepoints = min(max_movepoints, 3000)
-            start_movepoints = random.randint(min_movepoints, max_movepoints)
-
-            # place heroes at the random locations in the world
-            for team_idx in range(self.gameplay.num_teams):
-                team = Hero.teams[team_idx]
-                hero = Hero(self, team=team, start_movepoints=start_movepoints)
-                hero_pos_idx = random.randrange(len(unoccupied_cells))
-                hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
-                self.heroes.append(hero)
+            self._try_place_heroes()
 
         self.update_scouting(self.current_hero())
 
@@ -368,6 +341,56 @@ class Game:
         self._update_camera_position()
 
         return self.get_state()
+
+    def _try_place_heroes(self):
+        dim = self.world_size
+
+        # Find all accessible space in the world, open areas where game objects are found. Otherwise heroes may
+        # stuck, completely surronded by obstacles.
+        accessible = np.full((dim, dim), False, dtype=bool)
+        q = deque([])
+
+        # all cells that are accessible, but not occupied by any object
+        unoccupied_cells = []
+
+        # we know that all objects are accessible, let's find the object and start search from there
+        for (i, j), obj in np.ndenumerate(self.objects):
+            if obj is not None:
+                accessible[i, j] = True
+                q.append((i, j))
+                break
+
+        # bfs
+        while q:
+            i, j = q.popleft()
+            for di, dj in zip(DI, DJ):
+                new_i, new_j = i + di, j + dj
+                if not self.terrain[new_i, new_j].reachable():
+                    continue
+                if accessible[new_i, new_j]:
+                    continue
+                accessible[new_i, new_j] = True
+                q.append((new_i, new_j))
+                if self.objects[new_i, new_j] is None:
+                    unoccupied_cells.append((new_i, new_j))
+
+        if len(unoccupied_cells) < self.gameplay.num_teams:
+            logger.info('World generation failed, try again...')
+            return
+
+        # equal amount of movepoints for all heroes
+        min_movepoints = 1000
+        max_movepoints = max(min_movepoints, 100 * dim * 2)
+        max_movepoints = min(max_movepoints, 3000)
+        start_movepoints = random.randint(min_movepoints, max_movepoints)
+
+        # place heroes at the random locations in the world
+        for team_idx in range(self.gameplay.num_teams):
+            team = Hero.teams[team_idx]
+            hero = Hero(self, team=team, start_movepoints=start_movepoints)
+            hero_pos_idx = random.randrange(len(unoccupied_cells))
+            hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
+            self.heroes.append(hero)
 
     def _generate_world(self):
         function_start = time.time()
@@ -389,7 +412,7 @@ class Game:
         self._generate_objects()
 
         # generate terrain
-        self._generate_terrain(ground, (obstacle, swamp))
+        self._generate_terrain(ground, ((obstacle, 0.1), (swamp, 0.07)))
 
         logger.info('Took %r seconds for _generate_world', time.time() - function_start)
 
@@ -422,48 +445,68 @@ class Game:
                             self.num_gold_piles += 1
                         break
 
-    def _generate_terrain(self, ground, terrains):
+    def _generate_terrain(self, default_terrain, terrains):
+        """
+        Generate underlying terrain.
+        :param terrains: list of tuples (terrain, probability_of_terrain_seed)
+        """
         dim = self.world_size
         # generate terrain "seeds"
-        seed_prob = 0.1
         for i in range(dim):
             for j in range(dim):
+                terrain, seed_prob = random.choice(terrains)
                 if random.random() > seed_prob:
                     continue
-                terrain_idx = random.randrange(len(terrains))
-                self._spread_terrain(i, j, terrains[terrain_idx])
+                self._spread_terrain(i, j, terrain)
 
-        self._ensure_all_objects_are_accessible(ground)
+        self._ensure_all_objects_are_accessible(default_terrain)
 
-    def _spread_terrain(self, i, j, terrain):
-        if self.objects[i, j] is not None:
+    def _spread_terrain(self, seed_i, seed_j, terrain):
+        """Use bfs instead of dfs to avoid possibly deep recursion."""
+        def should_spread(cell_i, cell_j):
+            if self.objects[cell_i, cell_j] is not None:
+                return False
+            return isinstance(self.terrain[cell_i, cell_j], Ground)
+
+        if not should_spread(seed_i, seed_j):
             return
-        if not isinstance(self.terrain[i, j], Ground):
-            return
-        self.terrain[i, j] = terrain
+        q = deque([(seed_i, seed_j)])
+        self.terrain[seed_i, seed_j] = terrain
+
         spread_prob = 0.4
-        for di, dj in zip(DI, DJ):
-            if random.random() < spread_prob:
-                self._spread_terrain(i + di, j + dj, terrain)
+        while q:
+            i, j = q.popleft()
+            for di, dj in zip(DI, DJ):
+                new_i, new_j = i + di, j + dj
+                if not should_spread(new_i, new_j):
+                    continue
+                self.terrain[new_i, new_j] = terrain
+                if random.random() < spread_prob:
+                    q.append((new_i, new_j))
 
     def _is_border(self, i, j):
         border = lambda coord: coord < self.border or coord >= self.world_size - self.border
         return border(i) or border(j)
 
-    def _mark_zone(self, zones, i, j, zone_idx):
-        """Basically, run a dfs until all cells accessible from this one are marked with the same zone idx."""
-        if zones[i, j] != -1:  # already visited
-            return
-        zones[i, j] = zone_idx
-        for di, dj in zip(DI, DJ):
-            new_i, new_j = i + di, j + dj
-            if self.terrain[new_i, new_j].reachable():
-                self._mark_zone(zones, new_i, new_j, zone_idx)
+    def _mark_zone(self, zones, start_i, start_j, zone_idx):
+        """Run a bfs until all cells accessible from this one are marked with the same zone idx."""
+        q = deque([(start_i, start_j)])
+        zones[start_i, start_j] = zone_idx
+        while q:
+            i, j = q.popleft()
+            for di, dj in zip(DI, DJ):
+                new_i, new_j = i + di, j + dj
+                if zones[new_i, new_j] != -1:
+                    continue
+                if self.terrain[new_i, new_j].reachable():
+                    zones[new_i, new_j] = zone_idx
+                    q.append((new_i, new_j))
 
-    def _ensure_all_objects_are_accessible(self, ground):
+    def _ensure_all_objects_are_accessible(self, default_terrain):
         """
         After generation of obstacles some areas of the map may be inaccessible.
         The following code removes some obstacles to make it possible for heroes to reach all objects in the world.
+        :param default_terrain: replace obstacles with this type of terrain where needed.
         """
         function_start = time.time()
         dim = self.world_size
@@ -475,6 +518,10 @@ class Game:
             if obj is not None and zones[i, j] == -1:
                 self._mark_zone(zones, i, j, num_zones)
                 num_zones += 1
+
+        if num_zones <= 0:
+            logger.info('World with no objects, skip...')
+            return
 
         # Select one connected component and find shortest path to all other components.
         # Using Dijkstra algorithm to find shortest route, obstacle cells are given very high weight.
@@ -515,7 +562,7 @@ class Game:
 
             visited[best_cell] = True
             num_visited += 1
-            logger.info('Num visited: %d', num_visited)
+            # logger.info('Num visited: %d', num_visited)
 
             # do edge relaxation
             best_cell = Vec(*best_cell)
@@ -544,7 +591,7 @@ class Game:
             cell_on_path = Vec(i, j)
             while cell_on_path is not None:
                 if not self.terrain[cell_on_path.ij].reachable():
-                    self.terrain[cell_on_path.ij] = ground
+                    self.terrain[cell_on_path.ij] = default_terrain
                 cell_on_path = path[cell_on_path.ij]
             zone_reachable[zone] = True
 
