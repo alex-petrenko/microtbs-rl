@@ -1,3 +1,4 @@
+import time
 import random
 
 import numpy as np
@@ -5,9 +6,7 @@ import pygame
 
 from utils import *
 
-
 logger = logging.getLogger(os.path.basename(__file__))
-
 
 # Helper constants
 
@@ -371,6 +370,7 @@ class Game:
         return self.get_state()
 
     def _generate_world(self):
+        function_start = time.time()
         dim = self.world_size
 
         # reset counters
@@ -389,7 +389,9 @@ class Game:
         self._generate_objects()
 
         # generate terrain
-        self._generate_terrain((obstacle, swamp))
+        self._generate_terrain(ground, (obstacle, swamp))
+
+        logger.info('Took %r seconds for _generate_world', time.time() - function_start)
 
     def _generate_objects(self):
         dim = self.world_size
@@ -420,7 +422,7 @@ class Game:
                             self.num_gold_piles += 1
                         break
 
-    def _generate_terrain(self, terrain):
+    def _generate_terrain(self, ground, terrains):
         dim = self.world_size
         # generate terrain "seeds"
         seed_prob = 0.1
@@ -428,8 +430,10 @@ class Game:
             for j in range(dim):
                 if random.random() > seed_prob:
                     continue
-                terrain_idx = random.randrange(len(terrain))
-                self._spread_terrain(i, j, terrain[terrain_idx])
+                terrain_idx = random.randrange(len(terrains))
+                self._spread_terrain(i, j, terrains[terrain_idx])
+
+        self._ensure_all_objects_are_accessible(ground)
 
     def _spread_terrain(self, i, j, terrain):
         if self.objects[i, j] is not None:
@@ -441,6 +445,110 @@ class Game:
         for di, dj in zip(DI, DJ):
             if random.random() < spread_prob:
                 self._spread_terrain(i + di, j + dj, terrain)
+
+    def _is_border(self, i, j):
+        border = lambda coord: coord < self.border or coord >= self.world_size - self.border
+        return border(i) or border(j)
+
+    def _mark_zone(self, zones, i, j, zone_idx):
+        """Basically, run a dfs until all cells accessible from this one are marked with the same zone idx."""
+        if zones[i, j] != -1:  # already visited
+            return
+        zones[i, j] = zone_idx
+        for di, dj in zip(DI, DJ):
+            new_i, new_j = i + di, j + dj
+            if self.terrain[new_i, new_j].reachable():
+                self._mark_zone(zones, new_i, new_j, zone_idx)
+
+    def _ensure_all_objects_are_accessible(self, ground):
+        """
+        After generation of obstacles some areas of the map may be inaccessible.
+        The following code removes some obstacles to make it possible for heroes to reach all objects in the world.
+        """
+        function_start = time.time()
+        dim = self.world_size
+        zones = np.full((dim, dim), -1, dtype=int)
+        num_zones = 0
+
+        # find connected components of the world
+        for (i, j), obj in np.ndenumerate(self.objects):
+            if obj is not None and zones[i, j] == -1:
+                self._mark_zone(zones, i, j, num_zones)
+                num_zones += 1
+
+        # Select one connected component and find shortest path to all other components.
+        # Using Dijkstra algorithm to find shortest route, obstacle cells are given very high weight.
+        selected_zone = random.randrange(0, num_zones)
+        search_start = None
+        for (i, j), zone in np.ndenumerate(zones):
+            if zone == selected_zone:
+                search_start = (i, j)
+                break
+
+        # Simplest implementation of the Dijkstra algorithm
+        very_big_number = 1000 * 1000 * 1000
+        dist = np.full((dim, dim), very_big_number, dtype=int)
+        dist[search_start] = 0
+
+        import heapq
+        search_buffer = []
+        heapq.heappush(search_buffer, (0, search_start))
+
+        visited = {}
+
+        # noinspection PyTypeChecker
+        path = np.full((dim, dim), None, dtype=Vec)
+
+        dijkstra_start = time.time()
+        num_visited = 0
+        while True:
+            # Find not yet visited cell with shortest distance from the start.
+            try:
+                best_d, best_cell = heapq.heappop(search_buffer)
+            except IndexError:
+                break
+            if best_d >= very_big_number:
+                # could not find the next cell to do relaxation, probably reached the border of the world
+                break
+            if visited.get(best_cell):
+                continue
+
+            visited[best_cell] = True
+            num_visited += 1
+            logger.info('Num visited: %d', num_visited)
+
+            # do edge relaxation
+            best_cell = Vec(*best_cell)
+            for di, dj in zip(DI, DJ):
+                new_i, new_j = best_cell.i + di, best_cell.j + dj
+                terrain = self.terrain[new_i, new_j]
+                d = terrain.penalty()
+                if not terrain.reachable():
+                    d *= 1000
+                if self._is_border(new_i, new_j):
+                    d = very_big_number
+                new_dist = d + dist[best_cell.ij]
+                old_dist = dist[new_i, new_j]
+                if new_dist < old_dist:
+                    heapq.heappush(search_buffer, (new_dist, (new_i, new_j)))
+                    dist[new_i, new_j] = new_dist
+                    path[new_i, new_j] = best_cell
+
+        logger.info('Took %r seconds for dijkstra', time.time() - dijkstra_start)
+
+        zone_reachable = {selected_zone: True}
+        for (i, j), zone in np.ndenumerate(zones):
+            if zone == -1 or zone_reachable.get(zone, False):
+                continue
+            # recover shortest path to the point inside zone and remove all obstacles on this path
+            cell_on_path = Vec(i, j)
+            while cell_on_path is not None:
+                if not self.terrain[cell_on_path.ij].reachable():
+                    self.terrain[cell_on_path.ij] = ground
+                cell_on_path = path[cell_on_path.ij]
+            zone_reachable[zone] = True
+
+        logger.info('Took %r seconds for _ensure_all_objects_are_accessible', time.time() - function_start)
 
     def is_over(self):
         return self.over
@@ -547,7 +655,7 @@ class Game:
             if not self.terrain[new_pos.ij].reachable():
                 can_move = False
                 # small penalty for bumping into obstacles
-                reward -= self.reward_unit
+                reward -= 10 * self.reward_unit
 
         if can_move:
             hero.pos = new_pos
