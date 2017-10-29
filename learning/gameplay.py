@@ -1,6 +1,6 @@
 import pygame
 
-from micro_tbs import Game
+from micro_tbs import Game, GameplayOptions
 from utils import *
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -11,7 +11,8 @@ def main():
     init_logger(os.path.basename(__file__))
     pygame.init()
 
-    game = Game()
+    gameplay_options = GameplayOptions.collect_gold_simple()
+    game = Game(gameplay_options)
 
     while not game.should_quit():
         game.reset()

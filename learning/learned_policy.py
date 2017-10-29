@@ -29,8 +29,8 @@ def main():
     logger.info('Args: %r', args)
     train = args.train
 
-    options = GameplayOptions(diagonal_moves=False)
-    game = Game(options=options, windowless=train)
+    options = GameplayOptions.collect_gold_simple()
+    game = Game(gameplay_options=options, windowless=train)
     state = game.reset()
 
     agent = AgentDqn(game.allowed_actions(), state)

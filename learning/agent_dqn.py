@@ -92,7 +92,7 @@ class DeepQNetwork:
 
             # summaries for this particular DNN
             if self._with_summaries():
-                with tf.variable_scope(self.name + '_dqn_summary'):
+                with tf.variable_scope('summary'):
                     tf.summary.scalar('non_visual_max', tf.reduce_max(non_visual_fc4))
                     tf.summary.scalar('value', tf.reduce_mean(value))
                     for ac in range(num_actions):
@@ -140,7 +140,7 @@ class AgentDqn(Agent):
         self.exploration_strategy = EpsilonGreedy()
         self.episode_buffer = []
 
-        self.target_update_speed = 0.02  # rate to update target DQN towards primary DQN
+        self.target_update_speed = 0.01  # rate to update target DQN towards primary DQN
         gamma = 0.98  # future reward discount
 
         num_actions = len(allowed_actions)
@@ -267,7 +267,7 @@ class AgentDqn(Agent):
         return update_ops
 
     def _maybe_update_target(self, step):
-        update_every = 250
+        update_every = 100
         if step % update_every == 0:
             self.session.run(self.update_target_ops)
 

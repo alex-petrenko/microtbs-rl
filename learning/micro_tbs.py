@@ -18,6 +18,8 @@ DJ = (0, 1, 0, -1)
 # Various types used in the game
 
 class Entity:
+    """Basically, anything within the game world."""
+
     def _color(self):
         """Default color, should be overridden."""
         return 255, 0, 255
@@ -63,7 +65,7 @@ class GameObject(Entity):
     def __init__(self):
         self.disappear = False
 
-    def interact(self, game):
+    def interact(self, game, hero):
         """Returns reward."""
         return 0
 
@@ -86,6 +88,10 @@ class GameObject(Entity):
         """
         return self.disappear
 
+    def on_new_day(self):
+        """Called when game day changes."""
+        pass
+
     def _color(self):
         """Default color, should be overridden."""
         return 255, 0, 255
@@ -99,9 +105,9 @@ class GoldPile(GameObject):
         size = random.randint(0, 5)
         self.amount = min_size + size * step
 
-    def interact(self, game):
-        game.hero.money += self.amount
-        reward = self.amount / 10000.0
+    def interact(self, game, hero):
+        hero.money += self.amount
+        reward = (self.amount / 10.0) * game.reward_unit
         game.num_gold_piles -= 1
         self.disappear = True
         return reward
@@ -117,35 +123,51 @@ class Stables(GameObject):
         self.movepoints = 750
         self.visited = {}
 
-    def interact(self, game):
-        visited = self.visited.get(game.hero.team, False)
-        if not visited and game.hero.money >= self.cost:
-            game.hero.money -= self.cost
-            game.hero.change_movepoints(self.movepoints)
-            self.visited[game.hero.team] = True
-        return 0
+    def interact(self, game, hero):
+        if self._can_be_visited_by_hero(hero):
+            hero.money -= self.cost
+            hero.change_movepoints(delta=self.movepoints)
+            self.visited[hero.team] = True
+        return game.reward_unit * 10
+
+    def _can_be_visited_by_hero(self, hero):
+        visited = self.visited.get(hero.team, False)
+        return not visited and hero.money >= self.cost
 
     @staticmethod
     def can_be_visited():
         return True
 
+    def on_new_day(self):
+        self.visited = {}  # can be visited once a day
+
     def _color(self):
-        return 111, 84, 55
+        return 128, 64, 10
+
+    def draw(self, game, surface, pos, scale):
+        """Draw a tile a little bit dimmer if it cannot be visited."""
+        color = self._color()
+        if self._can_be_visited_by_hero(game.current_hero()):
+            color = tuple(int(1.3 * c) for c in color)
+        game.draw_tile(surface, pos, color, scale)
 
 
 class LookoutTower(GameObject):
     def __init__(self):
         super(LookoutTower, self).__init__()
-        self.cost = 1000
+        self.cost = 500
         self.visited = {}
 
-    def interact(self, game):
-        visited = self.visited.get(game.hero.team, False)
-        if not visited and game.hero.money >= self.cost:
-            game.hero.money -= self.cost
-            game.update_scouting(scouting=(game.hero.scouting * 3))
-            self.visited[game.hero.team] = True
-        return 0
+    def interact(self, game, hero):
+        if self._can_be_visited_by_hero(hero):
+            hero.money -= self.cost
+            game.update_scouting(hero, scouting=(hero.scouting * 3))
+            self.visited[hero.team] = True
+        return game.reward_unit * 10
+
+    def _can_be_visited_by_hero(self, hero):
+        visited = self.visited.get(hero.team, False)
+        return not visited and hero.money >= self.cost
 
     @staticmethod
     def can_be_visited():
@@ -153,6 +175,13 @@ class LookoutTower(GameObject):
 
     def _color(self):
         return 57, 120, 140
+
+    def draw(self, game, surface, pos, scale):
+        """Draw a tile a little bit dimmer if it cannot be visited."""
+        color = self._color()
+        if self._can_be_visited_by_hero(game.current_hero()):
+            color = tuple(int(1.3 * c) for c in color)
+        game.draw_tile(surface, pos, color, scale)
 
 
 class Hero(Entity):
@@ -165,12 +194,17 @@ class Hero(Entity):
         team_blue: (0, 0, 255),
     }
 
-    def __init__(self, start_movepoints, start_money=0, team=team_red):
+    def __init__(self, game, start_movepoints, start_money=0, team=team_red):
         self.pos = None
         self.team = team
+        self.start_movepoints = start_movepoints
         self.movepoints = start_movepoints
         self.money = start_money
-        self.scouting = 9.5
+        self.scouting = 3.25
+
+        # initially, everything hero sees is fog of war
+        dim = game.world_size
+        self.fog_of_war = np.full((dim, dim), 1, dtype=np.uint8)
 
     def _color(self):
         return self.colors[self.team]
@@ -178,6 +212,9 @@ class Hero(Entity):
     def change_movepoints(self, delta):
         self.movepoints += delta
         self.movepoints = max(0, self.movepoints)
+
+    def reset_movepoints(self):
+        self.movepoints = self.start_movepoints
 
     def within_scouting_range(self, i, j, scouting):
         return self.pos.dist_sq(Vec(i, j)) <= (scouting ** 2)
@@ -210,24 +247,41 @@ class Action:
         return Vec(*Action.movement[action])
 
     @staticmethod
-    def movepoints(action, penalty):
+    def movepoints(action, penalty_coeff):
         move_cells = sum((abs(d) for d in Action.movement[action]))
-        return penalty * Action.manhattan_to_euclid[move_cells]
+        return penalty_coeff * Action.manhattan_to_euclid[move_cells]
 
 
 class GameplayOptions:
-    def __init__(self, diagonal_moves=True):
-        self.diagonal_moves = diagonal_moves
+    def __init__(self):
+        self.diagonal_moves = False
+        self.num_teams = 1
+        self.max_days = 3
+
+    @staticmethod
+    def collect_gold_simple():
+        opt = GameplayOptions()
+        return opt
+
+    @staticmethod
+    def pvp():
+        opt = GameplayOptions()
+        opt.num_teams = 2
+        opt.max_days = 7
+        return opt
 
 
 class Game:
-    def __init__(self, options=None, windowless=False, world_size=4, view_size=6, resolution=700):
-        self.options = GameplayOptions() if options is None else options
+    reward_unit = 0.001
+
+    def __init__(self, gameplay_options=None, windowless=False, world_size=30, view_size=17, resolution=700):
+        self.gameplay = GameplayOptions() if gameplay_options is None else gameplay_options
 
         self.over = False
         self.quit = False
         self.key_down = False
         self.num_steps = 0
+        self.day = -1
 
         self.view_size = view_size
         self.camera_pos = Vec(0, 0)
@@ -236,10 +290,10 @@ class Game:
         self.world_size = world_size + 2 * self.border
         self.terrain = None
         self.objects = None
-        self.fog_of_war = None
         self.num_gold_piles = 0
 
-        self.hero = None
+        self.heroes = []
+        self.hero_idx, self.start_hero_idx = -1, -1
 
         self.state_surface = pygame.Surface((self.view_size, self.view_size))
 
@@ -267,11 +321,16 @@ class Game:
         self.over = False
         self.key_down = False
         self.num_steps = 0
+        self.day = 1
 
-        self.hero = None
+        self.heroes = []
+        # decide at random who's turn is first
+        self.start_hero_idx = random.randrange(0, self.gameplay.num_teams)
+        self.hero_idx = self.start_hero_idx
+
         dim = self.world_size
 
-        while self.hero is None:
+        while len(self.heroes) < self.gameplay.num_teams:
             self._generate_world()
 
             # place hero in the world
@@ -283,22 +342,29 @@ class Game:
                     if not self.terrain[i, j].reachable():
                         continue
                     unoccupied_cells.append((i, j))
-            if not unoccupied_cells:
+            if len(unoccupied_cells) < self.gameplay.num_teams:
                 logger.info('World generation failed, try again...')
                 continue
 
-            min_movepoints = 100
-            max_movepoints = 100 * dim * 2
+            # equal amount of movepoints for all heroes
+            min_movepoints = 1000
+            max_movepoints = max(min_movepoints, 100 * dim * 2)
+            max_movepoints = min(max_movepoints, 3000)
             start_movepoints = random.randint(min_movepoints, max_movepoints)
-            self.hero = Hero(team=Hero.team_red, start_movepoints=start_movepoints)
-            hero_pos_idx = random.randrange(len(unoccupied_cells))
-            self.hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
 
-        self.update_scouting()
+            # place heroes at the random locations in the world
+            for team_idx in range(self.gameplay.num_teams):
+                team = Hero.teams[team_idx]
+                hero = Hero(self, team=team, start_movepoints=start_movepoints)
+                hero_pos_idx = random.randrange(len(unoccupied_cells))
+                hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
+                self.heroes.append(hero)
+
+        self.update_scouting(self.current_hero())
 
         # setup camera
-        camera_i = max(0, self.hero.pos.i - self.view_size // 2)
-        camera_j = max(0, self.hero.pos.j - self.view_size // 2)
+        camera_i = max(0, self.current_hero().pos.i - self.view_size // 2)
+        camera_j = max(0, self.current_hero().pos.j - self.view_size // 2)
         self.camera_pos = Vec(camera_i, camera_j)
         self._update_camera_position()
 
@@ -309,9 +375,6 @@ class Game:
 
         # reset counters
         self.num_gold_piles = 0
-
-        # initially, everything is covered by fog of war
-        self.fog_of_war = np.full((dim, dim), 1, dtype=np.uint8)
 
         ground, obstacle, swamp = Ground(), Obstacle(), Swamp()
         # noinspection PyTypeChecker
@@ -334,9 +397,9 @@ class Game:
         self.objects = np.full((dim, dim), None, dtype=GameObject)
 
         min_max_count_per_100_cells = {
-            GoldPile: (1, 33),
+            GoldPile: (1, 20),
             Stables: (0.5, 1),
-            LookoutTower: (0.33, 1),
+            LookoutTower: (0.66, 1),
         }
 
         probability = {}
@@ -374,7 +437,7 @@ class Game:
         if not isinstance(self.terrain[i, j], Ground):
             return
         self.terrain[i, j] = terrain
-        spread_prob = 0.33
+        spread_prob = 0.4
         for di, dj in zip(DI, DJ):
             if random.random() < spread_prob:
                 self._spread_terrain(i + di, j + dj, terrain)
@@ -386,7 +449,7 @@ class Game:
         return self.quit
 
     def allowed_actions(self):
-        if self.options.diagonal_moves:
+        if self.gameplay.diagonal_moves:
             # remove noop for the RL agents, keep it only for human version
             actions = list(Action.all_actions)
             actions.remove(Action.noop)
@@ -422,35 +485,59 @@ class Game:
 
         return selected_action
 
+    def _next_turn(self):
+        self.hero_idx = (self.hero_idx + 1) % self.gameplay.num_teams
+        if self.hero_idx == self.start_hero_idx:
+            self._next_day()
+
+    def _next_day(self):
+        self.day += 1
+        # give heroes some movepoints for the next day
+        for hero in self.heroes:
+            hero.reset_movepoints()
+        for i in range(self.world_size):
+            for j in range(self.world_size):
+                obj = self.objects[i, j]
+                if obj is not None:
+                    obj.on_new_day()  # some objects may change state between days
+
     def _win_condition(self):
         return self.num_gold_piles == 0
 
     def _lose_condition(self):
-        if self.hero.movepoints == 0:
+        if self.day > self.gameplay.max_days:
             return True
         return False
 
     def _game_over_condition(self):
         return self._win_condition() or self._lose_condition()
 
+    def current_hero(self):
+        return self.heroes[self.hero_idx]
+
     def step(self, action):
         """Returns tuple (new_state, reward)."""
         self.num_steps += 1
-        new_pos = self.hero.pos + Action.delta(action)
+        hero = self.current_hero()
+        new_pos = hero.pos + Action.delta(action)
         reward = 0
 
         # required movepoints
-        penalty = self.terrain[new_pos.ij].penalty()
-        action_mp = Action.movepoints(action, penalty)
-        self.hero.change_movepoints(-action_mp)
+        penalty_coeff = self.terrain[new_pos.ij].penalty()
+        reward -= penalty_coeff * self.reward_unit
+        action_mp = Action.movepoints(action, penalty_coeff)
 
         can_move = True
-        if self.hero.movepoints == 0:
+        next_turn = False
+        if hero.movepoints < action_mp:
+            hero.movepoints = 0
             can_move = False
+            next_turn = True
         else:
+            hero.change_movepoints(delta=-action_mp)
             obj = self.objects[new_pos.ij]
             if obj is not None:
-                obj_reward = obj.interact(self)
+                obj_reward = obj.interact(self, hero)
                 reward += obj_reward
                 can_move = obj.can_be_visited()
                 if obj.should_disappear():
@@ -459,24 +546,30 @@ class Game:
 
             if not self.terrain[new_pos.ij].reachable():
                 can_move = False
+                # small penalty for bumping into obstacles
+                reward -= self.reward_unit
 
         if can_move:
-            self.hero.pos = new_pos
+            hero.pos = new_pos
+
+        if next_turn:
+            self._next_turn()
 
         if self._win_condition():
-            reward += 0.5
+            reward += 1000 * self.reward_unit
+        elif self._lose_condition():
+            reward -= 1000 * self.reward_unit
 
         if self._game_over_condition():
             self.over = True
 
-        self.update_scouting()
+        self.update_scouting(self.current_hero())
 
         self._update_camera_position()
 
         return self.get_state(), reward
 
-    def update_scouting(self, scouting=None):
-        hero = self.hero
+    def update_scouting(self, hero, scouting=None):
         if scouting is None:
             scouting = hero.scouting
 
@@ -484,29 +577,33 @@ class Game:
             _min = max(0, hero_coord - math.ceil(scouting))
             _max = min(self.world_size, hero_coord + math.ceil(scouting) + 1)
             return range(_min, _max)
+
         range_i = approx_scouting_range(hero.pos.i)
         range_j = approx_scouting_range(hero.pos.j)
 
         for i in range_i:
             for j in range_j:
-                if self.fog_of_war[i, j] > 0 and hero.within_scouting_range(i, j, scouting):
-                    self.fog_of_war[i, j] = 0
+                if hero.fog_of_war[i, j] > 0 and hero.within_scouting_range(i, j, scouting):
+                    hero.fog_of_war[i, j] = 0
 
     def _update_camera_position(self):
-        def update_coord(pos, hero_pos):
-            min_offset = (self.view_size // 2)
-            pos = min(pos, hero_pos - min_offset)
-            pos = max(pos, hero_pos + min_offset - self.view_size)
-            pos = min(pos, self.world_size - self.view_size)
-            pos = max(pos, 0)
-            return pos
-        self.camera_pos.i = update_coord(self.camera_pos.i, self.hero.pos.i)
-        self.camera_pos.j = update_coord(self.camera_pos.j, self.hero.pos.j)
+        hero = self.current_hero()
 
-        self.camera_pos = Vec(
-            self.world_size // 2 - self.view_size // 2,
-            self.world_size // 2 - self.view_size // 2,
-        )
+        # this just centers camera at the world center, useful for small worlds
+        # self.camera_pos = Vec(
+        #     self.world_size // 2 - self.view_size // 2,
+        #     self.world_size // 2 - self.view_size // 2,
+        # )
+
+        # move camera with the hero, keeping minimal clearance to the borders of the screen
+        def update_coord(pos, hero_pos):
+            min_clearance = self.view_size // 2 - 1
+            pos = min(pos, hero_pos - min_clearance)
+            pos = max(pos, hero_pos - self.view_size + 1 + min_clearance)
+            return pos
+
+        self.camera_pos.i = update_coord(self.camera_pos.i, hero.pos.i)
+        self.camera_pos.j = update_coord(self.camera_pos.j, hero.pos.j)
 
     def _render_game_world(self, surface, scale):
         camera = self.camera_pos
@@ -518,7 +615,7 @@ class Game:
         surface.fill((9, 5, 6))
         for i in range(min_i, max_i):
             for j in range(min_j, max_j):
-                if self.fog_of_war[i, j] > 0:
+                if self.current_hero().fog_of_war[i, j] > 0:
                     continue
 
                 self.terrain[i, j].draw(self, surface, Vec(i, j) - camera, scale)
@@ -526,16 +623,24 @@ class Game:
                 if obj is not None:
                     obj.draw(self, surface, Vec(i, j) - camera, scale)
 
-        assert min_i <= self.hero.pos.i < max_i
-        assert min_j <= self.hero.pos.j < max_j
-        self.hero.draw(self, surface, self.hero.pos - camera, scale)
+        # current hero should always be within the camera view
+        assert min_i <= self.current_hero().pos.i < max_i
+        assert min_j <= self.current_hero().pos.j < max_j
+
+        for hero in self.heroes:
+            pos = hero.pos - camera
+            if 0 <= pos.i < self.view_size and 0 <= pos.j < self.view_size:
+                hero.draw(self, surface, pos, scale)
 
     def _render_info(self):
+        hero = self.current_hero()
         self.ui_surface.fill((0, 0, 0))
         text_color = (248, 248, 242)
         text_items = [
-            'Movepoints: ' + str(self.hero.movepoints),
-            'Gold: ' + str(self.hero.money),
+            'Team: ' + str(self.current_hero().team),
+            'Movepoints: ' + str(hero.movepoints),
+            'Gold: ' + str(hero.money),
+            'Day: ' + str(self.day),
         ]
         offset = self.screen.get_height() // 50
         x_offset = y_offset = offset
@@ -562,9 +667,10 @@ class Game:
         return view
 
     def _non_visual_state(self):
+        hero = self.current_hero()
         return {
-            'movepoints': self.hero.movepoints,
-            'money': self.hero.money,
+            'movepoints': hero.movepoints,
+            'money': hero.money,
         }
 
     def get_state(self):
