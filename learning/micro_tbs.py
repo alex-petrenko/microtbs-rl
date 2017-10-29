@@ -1,3 +1,4 @@
+import heapq
 import random
 
 from collections import deque
@@ -274,7 +275,7 @@ class GameplayOptions:
 class Game:
     reward_unit = 0.001
 
-    def __init__(self, gameplay_options=None, windowless=False, world_size=5, view_size=17, resolution=700):
+    def __init__(self, gameplay_options=None, windowless=False, world_size=25, view_size=17, resolution=700):
         self.gameplay = GameplayOptions() if gameplay_options is None else gameplay_options
 
         self.over = False
@@ -393,7 +394,6 @@ class Game:
             self.heroes.append(hero)
 
     def _generate_world(self):
-        function_start = time.time()
         dim = self.world_size
 
         # reset counters
@@ -413,8 +413,6 @@ class Game:
 
         # generate terrain
         self._generate_terrain(ground, ((obstacle, 0.1), (swamp, 0.07)))
-
-        logger.info('Took %r seconds for _generate_world', time.time() - function_start)
 
     def _generate_objects(self):
         dim = self.world_size
@@ -508,7 +506,6 @@ class Game:
         The following code removes some obstacles to make it possible for heroes to reach all objects in the world.
         :param default_terrain: replace obstacles with this type of terrain where needed.
         """
-        function_start = time.time()
         dim = self.world_size
         zones = np.full((dim, dim), -1, dtype=int)
         num_zones = 0
@@ -533,59 +530,49 @@ class Game:
                 break
 
         # Simplest implementation of the Dijkstra algorithm
-        very_big_number = 1000 * 1000 * 1000
-        dist = np.full((dim, dim), very_big_number, dtype=int)
+        dist = np.full((dim, dim), 1000 * 1000 * 1000, dtype=int)
         dist[search_start] = 0
 
-        import heapq
         search_buffer = []
         heapq.heappush(search_buffer, (0, search_start))
 
-        visited = {}
+        visited = set()
 
         # noinspection PyTypeChecker
         path = np.full((dim, dim), None, dtype=Vec)
 
-        dijkstra_start = time.time()
-        num_visited = 0
         while True:
             # Find not yet visited cell with shortest distance from the start.
             try:
                 best_d, best_cell = heapq.heappop(search_buffer)
             except IndexError:
                 break
-            if best_d >= very_big_number:
-                # could not find the next cell to do relaxation, probably reached the border of the world
-                break
-            if visited.get(best_cell):
-                continue
 
-            visited[best_cell] = True
-            num_visited += 1
-            # logger.info('Num visited: %d', num_visited)
+            if best_cell in visited:
+                continue
+            visited.add(best_cell)
 
             # do edge relaxation
             best_cell = Vec(*best_cell)
             for di, dj in zip(DI, DJ):
                 new_i, new_j = best_cell.i + di, best_cell.j + dj
+                if self._is_border(new_i, new_j):
+                    continue
+
                 terrain = self.terrain[new_i, new_j]
                 d = terrain.penalty()
                 if not terrain.reachable():
-                    d *= 1000
-                if self._is_border(new_i, new_j):
-                    d = very_big_number
+                    d *= 10000
+
                 new_dist = d + dist[best_cell.ij]
-                old_dist = dist[new_i, new_j]
-                if new_dist < old_dist:
+                if new_dist < dist[new_i, new_j]:
                     heapq.heappush(search_buffer, (new_dist, (new_i, new_j)))
                     dist[new_i, new_j] = new_dist
                     path[new_i, new_j] = best_cell
 
-        logger.info('Took %r seconds for dijkstra', time.time() - dijkstra_start)
-
-        zone_reachable = {selected_zone: True}
+        zone_reachable = {selected_zone}
         for (i, j), zone in np.ndenumerate(zones):
-            if zone == -1 or zone_reachable.get(zone, False):
+            if zone == -1 or zone in zone_reachable:
                 continue
             # recover shortest path to the point inside zone and remove all obstacles on this path
             cell_on_path = Vec(i, j)
@@ -593,9 +580,7 @@ class Game:
                 if not self.terrain[cell_on_path.ij].reachable():
                     self.terrain[cell_on_path.ij] = default_terrain
                 cell_on_path = path[cell_on_path.ij]
-            zone_reachable[zone] = True
-
-        logger.info('Took %r seconds for _ensure_all_objects_are_accessible', time.time() - function_start)
+            zone_reachable.add(zone)
 
     def is_over(self):
         return self.over
