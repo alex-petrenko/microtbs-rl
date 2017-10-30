@@ -29,7 +29,7 @@ def main():
     logger.info('Args: %r', args)
     train = args.train
 
-    options = GameplayOptions.collect_gold_simple()
+    options = GameplayOptions.pvp()
     game = Game(gameplay_options=options, windowless=train)
     state = game.reset()
 

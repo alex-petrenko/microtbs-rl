@@ -190,7 +190,7 @@ class LookoutTower(GameObject):
 class ArmyDwelling(GameObject):
     def __init__(self):
         super(ArmyDwelling, self).__init__()
-        self.cost_per_unit = 2000
+        self.cost_per_unit = 1000
         self.num_units_per_day = 2
         self.num_units = self.num_units_per_day
 
@@ -236,11 +236,14 @@ class Hero(Entity):
     }
 
     def __init__(self, game, start_movepoints, start_money=0, team=team_red):
+        self.finished_turn = False  # turn is over for this hero
+        self.finished = False  # is game over for this hero
         self.pos = None
         self.team = team
         self.start_movepoints = start_movepoints
         self.movepoints = start_movepoints
         self.money = start_money
+        self.income = 300  # small income every day
         self.army = 1  # start with a single unit in the army
         self.scouting = 3.25
 
@@ -255,11 +258,34 @@ class Hero(Entity):
         self.movepoints += delta
         self.movepoints = max(0, self.movepoints)
 
-    def reset_movepoints(self):
+    def reset_day(self):
+        self.money += self.income
+        self.finished_turn = False
         self.movepoints = self.start_movepoints
 
     def within_scouting_range(self, i, j, scouting):
         return self.pos.dist_sq(Vec(i, j)) <= (scouting ** 2)
+
+    def is_defeated(self):
+        return self.army <= 0
+
+    @staticmethod
+    def heroes_interaction(hero_active, hero_passive):
+        assert hero_active.team != hero_passive.team
+        logger.info('Heroes interact! %d vs %d', hero_active.team, hero_passive.team)
+
+        def transfer_money(hero_from, hero_to):
+            hero_to.money += hero_from.money
+            hero_from.money = 0
+
+        if hero_active.army > hero_passive.army:
+            transfer_money(hero_passive, hero_active)
+        elif hero_active.army < hero_passive.army:
+            transfer_money(hero_active, hero_passive)
+
+        army_min = min(hero_active.army, hero_passive.army)
+        hero_active.army -= army_min
+        hero_passive.army -= army_min
 
 
 class Action:
@@ -298,11 +324,13 @@ class GameplayOptions:
     def __init__(self):
         self.diagonal_moves = False
         self.num_teams = 1
-        self.max_days = 300
+        self.max_days = 3
+        self.check_endgame = None
 
     @staticmethod
     def collect_gold_simple():
         opt = GameplayOptions()
+        opt.check_endgame = GameplayOptions._check_endgame_collect
         return opt
 
     @staticmethod
@@ -310,13 +338,37 @@ class GameplayOptions:
         opt = GameplayOptions()
         opt.num_teams = 2
         opt.max_days = 7
+        opt.check_endgame = GameplayOptions._check_endgame_pvp
         return opt
+
+    @staticmethod
+    def _check_endgame_collect(game, *_):
+        if game.num_gold_piles == 0:
+            # collected all gold piles
+            return True, +game.reward_unit * 1000
+        return False, 0
+
+    @staticmethod
+    def _check_endgame_pvp(game, hero):
+        if hero.is_defeated():
+            return True, -game.reward_unit * 1000
+
+        num_defeated = sum([h.is_defeated() for h in game.heroes])
+        if num_defeated == len(game.heroes):
+            # stalemate, all heroes are defeated
+            return True, -game.reward_unit * 100
+
+        if not hero.is_defeated() and num_defeated == (len(game.heroes) - 1):
+            # everyone is defeated except us, we won!
+            return True, +game.reward_unit * 1000
+
+        return False, 0
 
 
 class Game:
     reward_unit = 0.001
 
-    def __init__(self, gameplay_options=None, windowless=False, world_size=25, view_size=17, resolution=700):
+    def __init__(self, gameplay_options=None, windowless=False, world_size=10, view_size=8, resolution=700):
         self.gameplay = GameplayOptions() if gameplay_options is None else gameplay_options
 
         self.over = False
@@ -372,6 +424,9 @@ class Game:
 
         while len(self.heroes) < self.gameplay.num_teams:
             self._generate_world()
+            if self.num_gold_piles < 1:
+                logger.info('World with zero gold generated, try again!')
+                continue
             self._try_place_heroes()
 
         self.update_scouting(self.current_hero())
@@ -432,6 +487,7 @@ class Game:
             hero = Hero(self, team=team, start_movepoints=start_movepoints)
             hero_pos_idx = random.randrange(len(unoccupied_cells))
             hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
+            unoccupied_cells.pop(hero_pos_idx)  # do not place other heroes in the same tile
             self.heroes.append(hero)
 
     def _generate_world(self):
@@ -461,10 +517,10 @@ class Game:
         self.objects = np.full((dim, dim), None, dtype=GameObject)
 
         min_max_count_per_100_cells = {
-            GoldPile: (1, 20),
+            GoldPile: (2, 20),
             Stables: (0.5, 1),
             LookoutTower: (0.66, 1),
-            ArmyDwelling: (0.66, 1),
+            ArmyDwelling: (0.66, 1.5),
         }
 
         probability = {}
@@ -668,41 +724,41 @@ class Game:
         return selected_action
 
     def _next_turn(self):
+        reward = 0
         self.hero_idx = (self.hero_idx + 1) % self.gameplay.num_teams
         if self.hero_idx == self.start_hero_idx:
+            # all heroes finished their moves, go to the next game day
             self._next_day()
+            reward -= self.reward_unit * 10  # additional penalty for every day it took to finish the game
+        return self.heroes[self.hero_idx], reward
 
     def _next_day(self):
         self.day += 1
         # give heroes some movepoints for the next day
         for hero in self.heroes:
-            hero.reset_movepoints()
+            hero.reset_day()
         for i in range(self.world_size):
             for j in range(self.world_size):
                 obj = self.objects[i, j]
                 if obj is not None:
                     obj.on_new_day()  # some objects may change state between days
 
-    def _win_condition(self):
-        return self.num_gold_piles == 0
-
-    def _lose_condition(self):
+    def _game_over_condition(self):
         if self.day > self.gameplay.max_days:
             return True
-        return False
-
-    def _game_over_condition(self):
-        return self._win_condition() or self._lose_condition()
+        all_heroes_finished = True
+        for hero in self.heroes:
+            if not hero.finished:
+                all_heroes_finished = False
+                break
+        return all_heroes_finished
 
     def current_hero(self):
         return self.heroes[self.hero_idx]
 
-    def step(self, action):
-        """Returns tuple (new_state, reward)."""
-        self.num_steps += 1
-        hero = self.current_hero()
-        new_pos = hero.pos + Action.delta(action)
+    def _game_step(self, action, hero):
         reward = 0
+        new_pos = hero.pos + Action.delta(action)
 
         # required movepoints
         penalty_coeff = self.terrain[new_pos.ij].penalty()
@@ -710,44 +766,74 @@ class Game:
         action_mp = Action.movepoints(action, penalty_coeff)
 
         can_move = True
-        next_turn = False
         if hero.movepoints < action_mp:
             hero.movepoints = 0
             can_move = False
-            next_turn = True
         else:
             hero.change_movepoints(delta=-action_mp)
-            obj = self.objects[new_pos.ij]
-            if obj is not None:
-                obj_reward = obj.interact(self, hero)
-                reward += obj_reward
-                can_move = obj.can_be_visited()
-                if obj.should_disappear():
-                    self.objects[new_pos.ij] = None
-                    del obj
 
-            if not self.terrain[new_pos.ij].reachable():
+            # first of all, check interactions with other heroes
+            for i, other_hero in enumerate(self.heroes):
+                if i == self.hero_idx:  # heroes should not interact with themselves
+                    continue
+                if other_hero.pos != new_pos:
+                    continue
+                Hero.heroes_interaction(hero_active=hero, hero_passive=other_hero)
                 can_move = False
-                # small penalty for bumping into obstacles
-                reward -= 10 * self.reward_unit
+
+            # if no hero interaction, check if we can interact with a game object in the new_pos
+            if can_move:
+                obj = self.objects[new_pos.ij]
+                if obj is not None:
+                    obj_reward = obj.interact(self, hero)
+                    reward += obj_reward
+                    can_move = obj.can_be_visited()
+                    if obj.should_disappear():
+                        self.objects[new_pos.ij] = None
+                        del obj
+
+            # no heroes or objects, check if we bumped into an obstacle
+            if can_move:
+                if not self.terrain[new_pos.ij].reachable():
+                    can_move = False
+                    # small penalty for bumping into obstacles
+                    reward -= 10 * self.reward_unit
 
         if can_move:
             hero.pos = new_pos
 
-        if next_turn:
-            self._next_turn()
+        hero_done, endgame_reward = self.gameplay.check_endgame(self, hero)
+        if hero_done:
+            hero.movepoints = 0
+            hero.finished = True
+            reward += endgame_reward
 
-        if self._win_condition():
-            reward += 1000 * self.reward_unit
-        elif self._lose_condition():
-            reward -= 1000 * self.reward_unit
+        if hero.movepoints == 0:
+            hero.finished_turn = True
 
-        if self._game_over_condition():
-            self.over = True
+        return reward
 
-        self.update_scouting(self.current_hero())
+    def step(self, action):
+        """Returns tuple (new_state, reward)."""
+        self.num_steps += 1
+        reward = 0
+        hero = self.current_hero()
 
+        if hero.finished_turn:
+            # Here we have an "empty" step, where action taken by the hero does not matter.
+            # We use it just to pass the control to the next hero.
+            hero, reward = self._next_turn()
+        else:
+            # Regular update of the world dynamics.
+            reward = self._game_step(action, hero)
+
+        self.update_scouting(hero)
         self._update_camera_position()
+
+        heroes_finished = sum([h.finished for h in self.heroes])
+        if heroes_finished == len(self.heroes):
+            # all heroes are in "finished" state, game over
+            self.over = True
 
         return self.get_state(), reward
 
@@ -812,21 +898,27 @@ class Game:
         for hero in self.heroes:
             pos = hero.pos - camera
             if 0 <= pos.i < self.view_size and 0 <= pos.j < self.view_size:
-                hero.draw(self, surface, pos, scale)
+                if self.current_hero().fog_of_war[hero.pos.ij] == 0:
+                    hero.draw(self, surface, pos, scale)
 
     def _render_info(self):
         hero = self.current_hero()
         self.ui_surface.fill((0, 0, 0))
-        text_color = (248, 248, 242)
         text_items = [
             'Team: ' + str(self.current_hero().team),
             'Movepoints: ' + str(hero.movepoints),
             'Gold: ' + str(hero.money),
             'Army: ' + str(hero.army),
             'Day: ' + str(self.day),
+            'Finished: ' + str(hero.finished),
+            'Win: ' + str(hero.finished and not hero.is_defeated()),
         ]
         offset = self.screen.get_height() // 50
         x_offset = y_offset = offset
+        text_color = (248, 248, 242)
+        for h in self.heroes:
+            if h.finished and not h.is_defeated():
+                text_color = Hero.colors[h.team]
         for text in text_items:
             label = self.font.render(text, 1, text_color)
             self.ui_surface.blit(label, (x_offset, y_offset))

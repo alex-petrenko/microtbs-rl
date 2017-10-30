@@ -36,6 +36,15 @@ class Vec:
     def ij(self):
         return self.i, self.j
 
+    def __eq__(self, other):
+        return self.i == other.i and self.j == other.j
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.i, self.j))
+
     def __neg__(self):
         return Vec(-self.i, -self.j)
 

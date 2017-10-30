@@ -11,9 +11,10 @@ def main():
     init_logger(os.path.basename(__file__))
     pygame.init()
 
-    gameplay_options = GameplayOptions.collect_gold_simple()
+    gameplay_options = GameplayOptions.pvp()
     game = Game(gameplay_options)
 
+    fps = 30
     while not game.should_quit():
         game.reset()
 
@@ -21,8 +22,13 @@ def main():
             action = game.process_events()
             game.step(action)
             game.render()
+            game.clock.tick(fps)
 
-            game.clock.tick(30)
+        if not game.should_quit():
+            # display the end position in the game for a couple of sec
+            for _ in range(fps * 2):
+                game.render()
+                game.clock.tick(fps)
 
     logger.info('Exiting...')
 
