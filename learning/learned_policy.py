@@ -3,7 +3,7 @@ import argparse
 import pygame
 
 from agent_dqn import AgentDqn
-from micro_tbs import Game, GameplayOptions
+from micro_tbs import Game, WorldOptions
 from utils import *
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -29,8 +29,8 @@ def main():
     logger.info('Args: %r', args)
     train = args.train
 
-    options = GameplayOptions.pvp()
-    game = Game(gameplay_options=options, windowless=train)
+    options = WorldOptions.collect_gold_simple()
+    game = Game(world_options=options, windowless=train)
     state = game.reset()
 
     agent = AgentDqn(game.allowed_actions(), state)
@@ -60,7 +60,7 @@ def main():
         total_env_steps += game.num_steps
 
         if train:
-            for i in range(15):
+            for i in range(30):
                 agent.update()
 
     logger.info('Exiting...')

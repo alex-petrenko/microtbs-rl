@@ -9,13 +9,13 @@ class EpsilonGreedy:
         return k * x + b
 
     def exploration_prob(self, step):
-        exploration = self._linear_decay(0.0, 1.0, 3e5, 0.25, step)
-        if exploration > 0.25:
+        exploration = self._linear_decay(0.0, 1.0, 1e5, 0.3, step)
+        if exploration > 0.3:
             return exploration
-        exploration = self._linear_decay(3e5, 0.25, 1e6, 0.05, step)
-        if exploration > 0.05:
+        exploration = self._linear_decay(1e5, 0.3, 3e5, 0.1, step)
+        if exploration > 0.1:
             return exploration
-        return 0.05  # minimum exploration
+        return 0.1  # minimum exploration
 
     def action(self, step, explore, exploit):
         if random.random() < self.exploration_prob(step):

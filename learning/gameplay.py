@@ -1,6 +1,6 @@
 import pygame
 
-from micro_tbs import Game, GameplayOptions
+from micro_tbs import Game, WorldOptions
 from utils import *
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -11,7 +11,7 @@ def main():
     init_logger(os.path.basename(__file__))
     pygame.init()
 
-    gameplay_options = GameplayOptions.pvp()
+    gameplay_options = WorldOptions.collect_gold_simple()
     game = Game(gameplay_options)
 
     fps = 30
@@ -26,7 +26,7 @@ def main():
 
         if not game.should_quit():
             # display the end position in the game for a couple of sec
-            for _ in range(fps * 2):
+            for _ in range(fps):
                 game.render()
                 game.clock.tick(fps)
 

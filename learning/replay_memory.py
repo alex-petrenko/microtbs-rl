@@ -8,11 +8,11 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 class ReplayMemory:
     def __init__(self):
-        self.store_max_episodes = 10000
+        self.store_max_episodes = 5000
         self.episodes = []
 
     def good_enough(self):
-        min_memory = 50
+        min_memory = 200
         if len(self.episodes) < min_memory:
             return False
         return True

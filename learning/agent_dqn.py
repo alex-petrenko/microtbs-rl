@@ -50,29 +50,23 @@ class DeepQNetwork:
             visual_state_flat = tf.contrib.layers.flatten(conv3)
 
             # process non-visual state
-            self.movepoints = tf.placeholder(tf.float32, shape=[None], name='mp')
-            self.money = tf.placeholder(tf.float32, shape=[None], name='money')
-
-            # process non-visual state
-            self.movepoints = tf.placeholder(tf.float32, shape=[None], name='mp')
-            self.money = tf.placeholder(tf.float32, shape=[None], name='money')
-
-            non_visual_raw = [self.movepoints, self.money]
-            non_visual_log = [
-                tf.expand_dims(tf.log(f + 1.0), axis=1) for f in non_visual_raw
-            ]
+            non_visual_feature_names = ['team', 'movepoints', 'money', 'army', 'day', 'finished', 'win']
+            self.non_visual_features = {}
+            for name in non_visual_feature_names:
+                self.non_visual_features[name] = tf.placeholder(tf.float32, shape=[None], name=name)
+            non_visual_raw = list(self.non_visual_features.values())
+            non_visual_log = [tf.expand_dims(tf.log(f + 1.0), axis=1) for f in non_visual_raw]
             non_visual_input = tf.concat(non_visual_log, axis=1)
-            non_visual_fc1 = fully_connected(non_visual_input, 64)
-            non_visual_fc2 = fully_connected(non_visual_fc1, 64)
-            non_visual_fc3 = fully_connected(non_visual_fc2, 64)
-            non_visual_fc4 = fully_connected(non_visual_fc3, 64, activation=tf.nn.tanh)
+            non_visual_fc1 = fully_connected(non_visual_input, 128)
+            non_visual_fc2 = fully_connected(non_visual_fc1, 128)
+            non_visual_fc3 = fully_connected(non_visual_fc2, 128)
 
             # visual and non-visual feed together
-            full_input = tf.concat([visual_state_flat, non_visual_fc4], axis=1)
+            full_input = tf.concat([visual_state_flat, non_visual_fc3], axis=1)
 
             # "policy" layers
-            fc1 = fully_connected(full_input, 128)
-            fc2 = fully_connected(fc1, 128)
+            fc1 = fully_connected(full_input, 256)
+            fc2 = fully_connected(fc1, 256)
 
             # "dueling" DQN trick
             with tf.variable_scope('dueling'):
@@ -93,7 +87,7 @@ class DeepQNetwork:
             # summaries for this particular DNN
             if self._with_summaries():
                 with tf.variable_scope('summary'):
-                    tf.summary.scalar('non_visual_max', tf.reduce_max(non_visual_fc4))
+                    tf.summary.scalar('non_visual_max', tf.reduce_max(non_visual_fc3))
                     tf.summary.scalar('value', tf.reduce_mean(value))
                     for ac in range(num_actions):
                         tf.summary.histogram('advantage_' + str(ac), advantage[:, ac])
@@ -246,12 +240,11 @@ class AgentDqn(Agent):
 
     @staticmethod
     def _feed_state(state_batch, dqn):
+        state_dict = {dqn.visual_state: [s['visual_state'] for s in state_batch]}
         non_visual = [s['non_visual_state'] for s in state_batch]
-        return {
-            dqn.visual_state: [s['visual_state'] for s in state_batch],
-            dqn.movepoints: [s['movepoints'] for s in non_visual],
-            dqn.money: [s['money'] for s in non_visual],
-        }
+        for name, feature in dqn.non_visual_features.items():
+            state_dict[feature] = [s[name] for s in non_visual]
+        return state_dict
 
     def _generate_target_update_ops(self):
         primary_trainables = self.primary_dqn.get_trainable_variables()
@@ -360,5 +353,5 @@ class AgentDqn(Agent):
     def update(self):
         if not self.memory.good_enough():
             return  # skip updating until we gain more experience
-        state, action_idx, new_state, reward = self.memory.recollect(batch_size=128)
+        state, action_idx, new_state, reward = self.memory.recollect(batch_size=256)
         self._update_step(state, action_idx, new_state, reward)

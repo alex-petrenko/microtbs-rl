@@ -129,7 +129,7 @@ class Stables(GameObject):
             hero.money -= self.cost
             hero.change_movepoints(delta=self.movepoints)
             self.visited[hero.team] = True
-            return game.reward_unit * 10
+            return game.reward_unit * 50
         return 0
 
     def _can_be_visited_by_hero(self, hero):
@@ -165,7 +165,7 @@ class LookoutTower(GameObject):
             hero.money -= self.cost
             game.update_scouting(hero, scouting=(hero.scouting * 3))
             self.visited[hero.team] = True
-            return game.reward_unit * 10
+            return game.reward_unit * 50
         return 0
 
     def _can_be_visited_by_hero(self, hero):
@@ -200,7 +200,7 @@ class ArmyDwelling(GameObject):
             assert self.num_units > 0
             self.num_units -= 1
             hero.army += 1
-            return game.reward_unit * 10
+            return game.reward_unit * 50
         return 0
 
     def _can_be_visited_by_hero(self, hero):
@@ -245,7 +245,7 @@ class Hero(Entity):
         self.money = start_money
         self.income = 300  # small income every day
         self.army = 1  # start with a single unit in the army
-        self.scouting = 3.25
+        self.scouting = 13.25
 
         # initially, everything hero sees is fog of war
         dim = game.world_size
@@ -320,25 +320,29 @@ class Action:
         return penalty_coeff * Action.manhattan_to_euclid[move_cells]
 
 
-class GameplayOptions:
+class WorldOptions:
     def __init__(self):
         self.diagonal_moves = False
         self.num_teams = 1
         self.max_days = 3
         self.check_endgame = None
 
+        # world generation options
+        self.terrain_seed_prob = {Obstacle: 0.07, Swamp: 0.06}
+
     @staticmethod
     def collect_gold_simple():
-        opt = GameplayOptions()
-        opt.check_endgame = GameplayOptions._check_endgame_collect
+        opt = WorldOptions()
+        opt.check_endgame = WorldOptions._check_endgame_collect
+        opt.max_days = 1
         return opt
 
     @staticmethod
     def pvp():
-        opt = GameplayOptions()
+        opt = WorldOptions()
         opt.num_teams = 2
-        opt.max_days = 7
-        opt.check_endgame = GameplayOptions._check_endgame_pvp
+        opt.max_days = 3
+        opt.check_endgame = WorldOptions._check_endgame_pvp
         return opt
 
     @staticmethod
@@ -356,7 +360,7 @@ class GameplayOptions:
         num_defeated = sum([h.is_defeated() for h in game.heroes])
         if num_defeated == len(game.heroes):
             # stalemate, all heroes are defeated
-            return True, -game.reward_unit * 100
+            return True, -game.reward_unit
 
         if not hero.is_defeated() and num_defeated == (len(game.heroes) - 1):
             # everyone is defeated except us, we won!
@@ -368,8 +372,8 @@ class GameplayOptions:
 class Game:
     reward_unit = 0.001
 
-    def __init__(self, gameplay_options=None, windowless=False, world_size=10, view_size=8, resolution=700):
-        self.gameplay = GameplayOptions() if gameplay_options is None else gameplay_options
+    def __init__(self, world_options=None, windowless=False, world_size=5, view_size=7, resolution=600):
+        self.world_opt = WorldOptions() if world_options is None else world_options
 
         self.over = False
         self.quit = False
@@ -419,10 +423,10 @@ class Game:
 
         self.heroes = []
         # decide at random who's turn is first
-        self.start_hero_idx = random.randrange(0, self.gameplay.num_teams)
+        self.start_hero_idx = random.randrange(0, self.world_opt.num_teams)
         self.hero_idx = self.start_hero_idx
 
-        while len(self.heroes) < self.gameplay.num_teams:
+        while len(self.heroes) < self.world_opt.num_teams:
             self._generate_world()
             if self.num_gold_piles < 1:
                 logger.info('World with zero gold generated, try again!')
@@ -471,18 +475,18 @@ class Game:
                 if self.objects[new_i, new_j] is None:
                     unoccupied_cells.append((new_i, new_j))
 
-        if len(unoccupied_cells) < self.gameplay.num_teams:
+        if len(unoccupied_cells) < self.world_opt.num_teams:
             logger.info('World generation failed, try again...')
             return
 
         # equal amount of movepoints for all heroes
-        min_movepoints = 1000
-        max_movepoints = max(min_movepoints, 100 * dim * 2)
-        max_movepoints = min(max_movepoints, 3000)
+        min_movepoints = 2000
+        max_movepoints = max(min_movepoints, 250 * dim * 2)
+        max_movepoints = min(max_movepoints, 2500)
         start_movepoints = random.randint(min_movepoints, max_movepoints)
 
         # place heroes at the random locations in the world
-        for team_idx in range(self.gameplay.num_teams):
+        for team_idx in range(self.world_opt.num_teams):
             team = Hero.teams[team_idx]
             hero = Hero(self, team=team, start_movepoints=start_movepoints)
             hero_pos_idx = random.randrange(len(unoccupied_cells))
@@ -509,7 +513,8 @@ class Game:
         self._generate_objects()
 
         # generate terrain
-        self._generate_terrain(ground, ((obstacle, 0.1), (swamp, 0.07)))
+        terrains = (obstacle, swamp)
+        self._generate_terrain(ground, terrains)
 
     def _generate_objects(self):
         dim = self.world_size
@@ -517,10 +522,10 @@ class Game:
         self.objects = np.full((dim, dim), None, dtype=GameObject)
 
         min_max_count_per_100_cells = {
-            GoldPile: (2, 20),
+            GoldPile: (3, 20),
             Stables: (0.5, 1),
             LookoutTower: (0.66, 1),
-            ArmyDwelling: (0.66, 1.5),
+            ArmyDwelling: (0, 0),
         }
 
         probability = {}
@@ -550,7 +555,8 @@ class Game:
         # generate terrain "seeds"
         for i in range(dim):
             for j in range(dim):
-                terrain, seed_prob = random.choice(terrains)
+                terrain = random.choice(terrains)
+                seed_prob = self.world_opt.terrain_seed_prob[type(terrain)]
                 if random.random() > seed_prob:
                     continue
                 self._spread_terrain(i, j, terrain)
@@ -687,7 +693,7 @@ class Game:
         return self.quit
 
     def allowed_actions(self):
-        if self.gameplay.diagonal_moves:
+        if self.world_opt.diagonal_moves:
             # remove noop for the RL agents, keep it only for human version
             actions = list(Action.all_actions)
             actions.remove(Action.noop)
@@ -725,7 +731,7 @@ class Game:
 
     def _next_turn(self):
         reward = 0
-        self.hero_idx = (self.hero_idx + 1) % self.gameplay.num_teams
+        self.hero_idx = (self.hero_idx + 1) % self.world_opt.num_teams
         if self.hero_idx == self.start_hero_idx:
             # all heroes finished their moves, go to the next game day
             self._next_day()
@@ -744,14 +750,10 @@ class Game:
                     obj.on_new_day()  # some objects may change state between days
 
     def _game_over_condition(self):
-        if self.day > self.gameplay.max_days:
+        if self.day > self.world_opt.max_days:
             return True
-        all_heroes_finished = True
-        for hero in self.heroes:
-            if not hero.finished:
-                all_heroes_finished = False
-                break
-        return all_heroes_finished
+        heroes_finished = sum([h.finished for h in self.heroes])
+        return heroes_finished == len(self.heroes)  # all heroes are in finished state
 
     def current_hero(self):
         return self.heroes[self.hero_idx]
@@ -797,12 +799,21 @@ class Game:
                 if not self.terrain[new_pos.ij].reachable():
                     can_move = False
                     # small penalty for bumping into obstacles
-                    reward -= 10 * self.reward_unit
+                    reward -= 50 * self.reward_unit
 
         if can_move:
             hero.pos = new_pos
 
-        hero_done, endgame_reward = self.gameplay.check_endgame(self, hero)
+        # Check if we have enough movepoints to make at least one more move. If no, then its the end of the turn.
+        min_next_mp = sys.maxsize
+        for next_action in self.allowed_actions():
+            next_pos = hero.pos + Action.delta(next_action)
+            min_next_mp = min(min_next_mp, Action.movepoints(next_action, self.terrain[next_pos.ij].penalty()))
+        if min_next_mp > hero.movepoints:
+            # force the end of the turn
+            hero.movepoints = 0
+
+        hero_done, endgame_reward = self.world_opt.check_endgame(self, hero)
         if hero_done:
             hero.movepoints = 0
             hero.finished = True
@@ -816,7 +827,6 @@ class Game:
     def step(self, action):
         """Returns tuple (new_state, reward)."""
         self.num_steps += 1
-        reward = 0
         hero = self.current_hero()
 
         if hero.finished_turn:
@@ -830,9 +840,7 @@ class Game:
         self.update_scouting(hero)
         self._update_camera_position()
 
-        heroes_finished = sum([h.finished for h in self.heroes])
-        if heroes_finished == len(self.heroes):
-            # all heroes are in "finished" state, game over
+        if self._game_over_condition():
             self.over = True
 
         return self.get_state(), reward
@@ -855,23 +863,23 @@ class Game:
                     hero.fog_of_war[i, j] = 0
 
     def _update_camera_position(self):
-        hero = self.current_hero()
+        # hero = self.current_hero()
 
         # this just centers camera at the world center, useful for small worlds
-        # self.camera_pos = Vec(
-        #     self.world_size // 2 - self.view_size // 2,
-        #     self.world_size // 2 - self.view_size // 2,
-        # )
+        self.camera_pos = Vec(
+            self.world_size // 2 - self.view_size // 2,
+            self.world_size // 2 - self.view_size // 2,
+        )
 
         # move camera with the hero, keeping minimal clearance to the borders of the screen
-        def update_coord(pos, hero_pos):
-            min_clearance = self.view_size // 2 - 1
-            pos = min(pos, hero_pos - min_clearance)
-            pos = max(pos, hero_pos - self.view_size + 1 + min_clearance)
-            return pos
-
-        self.camera_pos.i = update_coord(self.camera_pos.i, hero.pos.i)
-        self.camera_pos.j = update_coord(self.camera_pos.j, hero.pos.j)
+        # def update_coord(pos, hero_pos):
+        #     min_clearance = self.view_size // 2 - 1
+        #     pos = min(pos, hero_pos - min_clearance)
+        #     pos = max(pos, hero_pos - self.view_size + 1 + min_clearance)
+        #     return pos
+        #
+        # self.camera_pos.i = update_coord(self.camera_pos.i, hero.pos.i)
+        # self.camera_pos.j = update_coord(self.camera_pos.j, hero.pos.j)
 
     def _render_game_world(self, surface, scale):
         camera = self.camera_pos
@@ -944,8 +952,13 @@ class Game:
     def _non_visual_state(self):
         hero = self.current_hero()
         return {
+            'team': hero.team,
             'movepoints': hero.movepoints,
             'money': hero.money,
+            'army': hero.army,
+            'day': self.day,
+            'finished': int(hero.finished),
+            'win': int(hero.finished and not hero.is_defeated()),
         }
 
     def get_state(self):
