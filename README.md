@@ -1,2 +1,2 @@
-# hierarchical-rl
-Training hierarchical DQN agents to beat turn-based strategy game
+# rl-experiments
+Training RL (DQN) agents to beat a turn-based strategy game
