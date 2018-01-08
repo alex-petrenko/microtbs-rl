@@ -8,7 +8,11 @@ from os.path import join
 
 
 EPS = 1e-5
-LOGGING_FOLDER = 'C:/temp/py_logging'  # use environment variable instead?
+
+if sys.platform == 'win32':
+    LOGGING_FOLDER = 'C:/temp/py_logging'  # use environment variable instead?
+else:
+    LOGGING_FOLDER = '/tmp/py_logging'
 
 
 class Vec:
