@@ -16,6 +16,30 @@ logger = logging.getLogger(os.path.basename(__file__))
 def main():
     init_logger(os.path.basename(__file__))
 
+    experiments_v0 = [
+        #'openai_dqn_conv1x1_to_mlp',
+        #'openai_dqn_conv3x3_to_mlp',
+        #'openai_dqn_conv3x3_nostride_to_mlp',
+        #'openai_dqn_conv3x3_nostride_y100',
+
+        #get_experiment_name_env_id('MicroTbs-CollectSimple-v0', 'dqn'),
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v0', 'dqn_v0'),
+        # get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v0', 'dqn_v1_100k'),
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v0', 'dqn_v3_inception'),
+
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v0', 'a2c_v0'),
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v0', 'a2c_v1'),
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v0', 'a2c_v2_inception'),
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v0', 'a2c_v4_10steps_097'),
+
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v0', 'openai_dqn'),
+    ]
+
+    experiments_v1 = [
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v1', 'a2c_v0'),
+        get_experiment_name_env_id('MicroTbs-CollectWithTerrain-v1', 'a2c_v1'),
+    ]
+
     experiments_partially_observable = [
         get_experiment_name_env_id('MicroTbs-CollectPartiallyObservable-v1', 'a2c_v2'),
         get_experiment_name_env_id('MicroTbs-CollectPartiallyObservable-v1', 'a2c_v3'),

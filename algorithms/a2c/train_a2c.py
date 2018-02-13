@@ -20,6 +20,20 @@ class A2CMonitor(Monitor):
             self.progress_file.flush()
 
 
+def train(a2c_params, env_id):
+    multithread_env = a2c.MultiEnv(a2c_params.num_envs, make_env_func=lambda: gym.make(env_id))
+
+    agent = a2c.AgentA2C(multithread_env, params=a2c_params)
+    agent.initialize()
+
+    with A2CMonitor(a2c_params.experiment_name) as monitor:
+        agent.learn(multithread_env, step_callback=monitor.callback)
+
+    agent.finalize()
+    multithread_env.close()
+    return 0
+
+
 def main():
     init_logger(os.path.basename(__file__))
 
@@ -30,17 +44,8 @@ def main():
     params.gamma = 0.925
     params.rollout = 10
     params.num_envs = 8
-    params.train_for_steps = 1000000
-
-    multithread_env = a2c.MultiEnv(params.num_envs, make_env_func=lambda: gym.make(env_id))
-
-    agent = a2c.AgentA2C(multithread_env, params=params)
-    agent.initialize()
-
-    with A2CMonitor(experiment) as monitor:
-        agent.learn(multithread_env, step_callback=monitor.callback)
-
-    multithread_env.close()
+    params.train_for_steps = 10000
+    return train(params, env_id)
 
 
 if __name__ == '__main__':

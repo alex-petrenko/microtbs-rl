@@ -97,14 +97,22 @@ class AgentA2C:
             self.entropy_loss_coeff = 0.01
             self.value_loss_coeff = 0.5
 
+            # training process
             self.save_every = 5000
             self.summaries_every = 100
             self.print_every = 50
-
             self.train_for_steps = 50000
+
+            # other
+            self._params_serialized = False
 
         def _params_file(self):
             return join(experiment_dir(self.experiment_name), 'params.json')
+
+        def ensure_serialized(self):
+            if not self._params_serialized:
+                self.serialize()
+                self._params_serialized = True
 
         def serialize(self):
             with open(self._params_file(), 'w') as json_file:
@@ -118,6 +126,8 @@ class AgentA2C:
     def __init__(self, env, params):
         self.params = params
         self.session = None
+
+        tf.reset_default_graph()
 
         input_shape = list(env.observation_space.shape)
         num_actions = env.action_space.n
@@ -188,13 +198,16 @@ class AgentA2C:
             self.session.run(tf.global_variables_initializer())
         logger.info('Initialized!')
 
+    def finalize(self):
+        self.session.close()
+
     def _maybe_save(self, step):
         next_step = step + 1
+        self.params.ensure_serialized()
         if next_step % self.params.save_every == 0:
             logger.info('Step #%d, saving...', step)
             saver_path = model_dir(self.params.experiment_name) + '/' + self.__class__.__name__
             self.saver.save(self.session, saver_path, global_step=step)
-            self.params.serialize()
 
     def _maybe_print(self, step, avg_rewards, fps):
         if step % self.params.print_every == 0:

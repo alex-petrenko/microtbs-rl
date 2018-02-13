@@ -14,13 +14,15 @@ from utils.common_utils import get_test_logger
 
 logger = get_test_logger()
 
+TEST_ENV = 'MicroTbs-CollectWithTerrain-v1'
+
 
 class MultiEnvTest(unittest.TestCase):
     def test_multi_env(self):
         def make_env_func():
-            return gym.make('MicroTbs-CollectWithTerrain-v1')
+            return gym.make(TEST_ENV)
 
-        num_envs = 16
+        num_envs = 8
         multi_env = MultiEnv(num_envs=num_envs, make_env_func=make_env_func)
         obs = multi_env.initial_observations()
 
@@ -36,7 +38,6 @@ class MultiEnvTest(unittest.TestCase):
         self.assertGreater(num_different, len(obs) // 2)
 
         for i in range(20):
-            logger.info('Step %d...', i)
             obs, rewards, dones = multi_env.step([0] * num_envs)
             self.assertEqual(len(obs), num_envs)
             self.assertEqual(len(rewards), num_envs)
@@ -65,3 +66,10 @@ class A2CTest(unittest.TestCase):
         for done_mask, expected_result in zip(dones, expected):
             calculated = list(a2c.AgentA2C._calc_discounted_rewards(gamma, rewards, done_mask, value))
             np.testing.assert_array_almost_equal(calculated, expected_result)
+
+    def test_train_and_run(self):
+        experiment_name = 'test'
+        a2c_params = a2c.AgentA2C.Params(experiment_name)
+        a2c_params.train_for_steps = 10
+        self.assertEqual(a2c.train_a2c.train(a2c_params, TEST_ENV), 0)
+        self.assertEqual(a2c.enjoy_a2c.enjoy(experiment_name, TEST_ENV, max_num_episodes=1), 0)

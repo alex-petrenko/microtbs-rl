@@ -136,6 +136,8 @@ class AgentDqnSimple:
         self.exploration_strategy = EpsilonGreedy(LinearDecay(milestones=self.params.exploration_schedule))
         self.episode_buffer = []
 
+        tf.reset_default_graph()
+
         global_step = tf.train.get_or_create_global_step()
 
         # create neural networks that we shall be training

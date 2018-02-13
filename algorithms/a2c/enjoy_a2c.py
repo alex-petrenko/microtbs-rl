@@ -9,20 +9,17 @@ from utils.common_utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def main():
-    init_logger(os.path.basename(__file__))
-
-    env = gym.make('MicroTbs-CollectPartiallyObservable-v2')
+def enjoy(experiment, env_id, max_num_episodes=1000000):
+    env = gym.make(env_id)
     env.seed(0)
 
-    experiment = get_experiment_name(env, 'a2c_v4')
     params = a2c.AgentA2C.Params(experiment).load()
     agent = a2c.AgentA2C(env, params)
     agent.initialize()
 
     episode_rewards = []
     fps = 6
-    while True:
+    for _ in range(max_num_episodes):
         obs, done = env.reset(), False
         episode_reward = 0
 
@@ -47,6 +44,17 @@ def main():
         logger.info(
             'Episode reward: %f, avg reward for %d episodes: %f', episode_reward, len(last_episodes), avg_reward,
         )
+
+    agent.finalize()
+    return 0
+
+
+def main():
+    init_logger(os.path.basename(__file__))
+
+    env_id = 'MicroTbs-CollectPartiallyObservable-v2'
+    experiment = get_experiment_name_env_id(env_id, 'a2c_v4')
+    return enjoy(experiment, env_id)
 
 
 if __name__ == '__main__':
