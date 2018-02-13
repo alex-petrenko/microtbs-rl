@@ -126,3 +126,4 @@ ENV/
 .summary/
 .profile/
 .hyperopt*
+.experiments/

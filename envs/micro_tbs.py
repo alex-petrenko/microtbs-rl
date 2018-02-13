@@ -1,12 +1,18 @@
 import heapq
-import random
 
 from collections import deque
 
-import numpy as np
+import gym
+import math
 import pygame
+import numpy as np
 
-from utils import *
+from gym import spaces
+from gym.utils import seeding
+
+from utils.vec import Vec
+from utils.common_utils import *
+from envs.pygame_utils import get_events
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -63,7 +69,8 @@ class Swamp(Terrain):
 
 
 class GameObject(Entity):
-    def __init__(self):
+    # noinspection PyUnusedLocal
+    def __init__(self, game):
         self.disappear = False
 
     def interact(self, game, hero):
@@ -99,16 +106,18 @@ class GameObject(Entity):
 
 
 class GoldPile(GameObject):
-    def __init__(self):
-        super(GoldPile, self).__init__()
-        min_size = 500
-        step = 100
-        size = random.randint(0, 5)
-        self.amount = min_size + size * step
+    def __init__(self, game):
+        super(GoldPile, self).__init__(game)
+
+        # determine the amount of gold in a gold pile
+        min_amount, step = 500, 100
+        size = game.rng.randint(0, 5)
+        self.amount = min_amount + size * step
 
     def interact(self, game, hero):
+        # give this gold to hero, also give some reward to RL agent
         hero.money += self.amount
-        reward = (self.amount / 10.0) * game.reward_unit
+        reward = 100 * game.reward_unit
         game.num_gold_piles -= 1
         self.disappear = True
         return reward
@@ -118,10 +127,10 @@ class GoldPile(GameObject):
 
 
 class Stables(GameObject):
-    def __init__(self):
-        super(Stables, self).__init__()
+    def __init__(self, game):
+        super(Stables, self).__init__(game)
         self.cost = 500
-        self.movepoints = 750
+        self.movepoints = 2000
         self.visited = {}
 
     def interact(self, game, hero):
@@ -129,8 +138,7 @@ class Stables(GameObject):
             hero.money -= self.cost
             hero.change_movepoints(delta=self.movepoints)
             self.visited[hero.team] = True
-            return game.reward_unit * 50
-        return 0
+        return 0  # don't give any reward, agent should figure out by itself
 
     def _can_be_visited_by_hero(self, hero):
         visited = self.visited.get(hero.team, False)
@@ -150,13 +158,13 @@ class Stables(GameObject):
         """Draw a tile a little bit dimmer if it cannot be visited."""
         color = self._color()
         if self._can_be_visited_by_hero(game.current_hero()):
-            color = tuple(int(1.3 * c) for c in color)
+            color = tuple(int(1.5 * c) for c in color)
         game.draw_tile(surface, pos, color, scale)
 
 
 class LookoutTower(GameObject):
-    def __init__(self):
-        super(LookoutTower, self).__init__()
+    def __init__(self, game):
+        super(LookoutTower, self).__init__(game)
         self.cost = 100
         self.visited = {}
 
@@ -165,8 +173,7 @@ class LookoutTower(GameObject):
             hero.money -= self.cost
             game.update_scouting(hero, scouting=(hero.scouting * 3))
             self.visited[hero.team] = True
-            return game.reward_unit * 50
-        return 0
+        return 0  # don't give any reward, agent should figure out by itself
 
     def _can_be_visited_by_hero(self, hero):
         visited = self.visited.get(hero.team, False)
@@ -183,13 +190,13 @@ class LookoutTower(GameObject):
         """Draw a tile a little bit dimmer if it cannot be visited."""
         color = self._color()
         if self._can_be_visited_by_hero(game.current_hero()):
-            color = tuple(int(1.3 * c) for c in color)
+            color = tuple(int(1.5 * c) for c in color)
         game.draw_tile(surface, pos, color, scale)
 
 
 class ArmyDwelling(GameObject):
-    def __init__(self):
-        super(ArmyDwelling, self).__init__()
+    def __init__(self, game):
+        super(ArmyDwelling, self).__init__(game)
         self.cost_per_unit = 1000
         self.num_units_per_day = 2
         self.num_units = self.num_units_per_day
@@ -200,8 +207,7 @@ class ArmyDwelling(GameObject):
             assert self.num_units > 0
             self.num_units -= 1
             hero.army += 1
-            return game.reward_unit * 50
-        return 0
+        return 0  # don't give any reward, agent should figure out by itself
 
     def _can_be_visited_by_hero(self, hero):
         return hero.money >= self.cost_per_unit and self.num_units > 0
@@ -221,7 +227,7 @@ class ArmyDwelling(GameObject):
         """Draw a tile a little bit dimmer if it cannot be visited."""
         color = self._color()
         if self._can_be_visited_by_hero(game.current_hero()):
-            color = tuple(int(1.3 * c) for c in color)
+            color = tuple(int(1.5 * c) for c in color)
         game.draw_tile(surface, pos, color, scale)
 
 
@@ -235,17 +241,16 @@ class Hero(Entity):
         team_blue: (0, 0, 255),
     }
 
-    def __init__(self, game, start_movepoints, start_money=0, team=team_red):
+    def __init__(self, game, start_money=0, team=team_red):
         self.finished_turn = False  # turn is over for this hero
         self.finished = False  # is game over for this hero
         self.pos = None
         self.team = team
-        self.start_movepoints = start_movepoints
-        self.movepoints = start_movepoints
+        self.movepoints = self.start_movepoints = game.mode.hero_start_movepoints
+        self.scouting = game.mode.hero_scouting_range
         self.money = start_money
         self.income = 300  # small income every day
         self.army = 1  # start with a single unit in the army
-        self.scouting = 13.25
 
         # initially, everything hero sees is fog of war
         dim = game.world_size
@@ -319,37 +324,91 @@ class Action:
         move_cells = sum((abs(d) for d in Action.movement[action]))
         return penalty_coeff * Action.manhattan_to_euclid[move_cells]
 
+    @classmethod
+    def actions_simple(cls):
+        return [cls.up, cls.right, cls.down, cls.left]
 
-class WorldOptions:
+    @classmethod
+    def actions_full(cls):
+        actions = list(cls.all_actions)
+        actions.remove(cls.noop)  # remove noop action for RL agents, keep it only for human version
+        return actions
+
+
+class GameMode:
     def __init__(self):
-        self.diagonal_moves = False
+        self.actions = Action.actions_simple()
         self.num_teams = 1
         self.max_days = 3
-        self.check_endgame = None
+        self.check_endgame = None  # must be overridden
+        self.center_camera = False
 
-        # world generation options
-        self.terrain_seed_prob = {Obstacle: 0.07, Swamp: 0.06}
+        # World generation options.
+        self.world_size = 5
+        self.view_size = 7
+        self.terrain_seed_prob = {Obstacle: 0.08, Swamp: 0.06}
+        self.terrain_spread_prob = 0.4  # probability that terrain will spread from seed to adjacent cell
+
+        # Object frequency (approx. min/max count per 100 cells).
+        # The world generation is probabiblistic, so these boundaries are not strict.
+        self.obj_count_per_100_cells = {
+            GoldPile: (3, 20),
+            Stables: (0.5, 1),
+            LookoutTower: (0.5, 1),
+            ArmyDwelling: (0.5, 1),
+        }
+
+        # Hero options.
+        self.hero_start_movepoints = 2000
+        self.hero_scouting_range = 3.25  # measured in game cells
 
     @staticmethod
-    def collect_gold_simple():
-        opt = WorldOptions()
-        opt.check_endgame = WorldOptions._check_endgame_collect
-        opt.max_days = 1
-        return opt
+    def collect_gold_simple_terrain():
+        mode = GameMode()
+        mode.check_endgame = GameMode._check_endgame_collect
+        mode.center_camera = True  # no need for camera movement in a small world, let it be stationary
+        mode.max_days = 1
+
+        obj_freq = mode.obj_count_per_100_cells
+        obj_freq[Stables] = (0, 0)  # in this simple scenario we always have enough movepoints to collect everything
+        obj_freq[LookoutTower] = (0, 0)  # in this scenario the world is fully observable, there's no need for scouting
+        obj_freq[ArmyDwelling] = (0, 0)  # no opponent -> we don't need army
+
+        mode.hero_scouting_range = mode.view_size * 5  # fully observable
+        return mode
+
+    @staticmethod
+    def collect_gold_simple_no_terrain():
+        mode = GameMode.collect_gold_simple_terrain()
+        mode.terrain_seed_prob = {Obstacle: 0.00, Swamp: 0.00}  # no obstacles or complex terrain
+        return mode
+
+    @staticmethod
+    def collect_gold_partially_observable():
+        mode = GameMode()
+        mode.check_endgame = GameMode._check_endgame_collect
+        mode.world_size = 17
+        mode.view_size = 15
+        mode.max_days = 3
+        mode.hero_start_movepoints = 3000
+
+        obj_freq = mode.obj_count_per_100_cells
+        obj_freq[ArmyDwelling] = (0, 0)  # no opponent -> we don't need army
+        return mode
 
     @staticmethod
     def pvp():
-        opt = WorldOptions()
-        opt.num_teams = 2
-        opt.max_days = 3
-        opt.check_endgame = WorldOptions._check_endgame_pvp
-        return opt
+        mode = GameMode()
+        mode.num_teams = 2
+        mode.max_days = 3
+        mode.check_endgame = GameMode._check_endgame_pvp
+        return mode
 
     @staticmethod
     def _check_endgame_collect(game, *_):
         if game.num_gold_piles == 0:
             # collected all gold piles
-            return True, +game.reward_unit * 1000
+            return True, +game.reward_unit * 500
         return False, 0
 
     @staticmethod
@@ -369,67 +428,79 @@ class WorldOptions:
         return False, 0
 
 
-class Game:
+class MicroTbs(gym.Env):
+    # game constants
+    human_resolution = 600
     reward_unit = 0.001
+    max_reward_abs = 1000 * reward_unit
 
-    def __init__(self, world_options=None, windowless=False, world_size=5, view_size=7, resolution=600):
-        self.world_opt = WorldOptions() if world_options is None else world_options
+    metadata = {'render.modes': ['human']}
+
+    def __init__(self, mode=None):
+        # initialize pygame modules (this is safe to call more than once)
+        pygame.init()
+
+        self.mode = GameMode() if mode is None else mode
+
+        # generate random seed
+        self.rng = None
+        self.seed()
+
+        self.view_size = self.mode.view_size
+        self.camera_pos = Vec(0, 0)
+
+        # gym.Env variables
+        self.action_space = spaces.Discrete(len(self.mode.actions))
+        self.observation_space = spaces.Box(0.0, 1.0, shape=[self.view_size, self.view_size, 3], dtype=np.float32)
+        self.reward_range = (-self.max_reward_abs, self.max_reward_abs)
 
         self.over = False
         self.quit = False
+        self.wait_for_key = False
         self.key_down = False
         self.num_steps = 0
         self.day = -1
 
-        self.view_size = view_size
-        self.camera_pos = Vec(0, 0)
-
         self.border = (self.view_size // 2) + 1
-        self.world_size = world_size + 2 * self.border
+        self.world_size = self.mode.world_size + 2 * self.border
         self.terrain = None
         self.objects = None
         self.num_gold_piles = 0
 
         self.heroes = []
-        self.hero_idx, self.start_hero_idx = -1, -1
+        self.hero_idx, self.start_hero_idx = -1, 0
 
         self.state_surface = pygame.Surface((self.view_size, self.view_size))
 
-        # reset the game world
-        self.reset()
-
         # stuff related to game rendering
         self.screen_scale = 1
-        while self.screen_scale * self.view_size < resolution:
-            self.screen_scale += 1
 
         self.screen = None
-        if not windowless:
-            self.screen_size_world = self.screen_scale * self.view_size
-            ui_size = min(200, resolution // 3)
-            screen_w = self.screen_size_world + ui_size
-            screen_h = self.screen_size_world
-            self.screen = pygame.display.set_mode((screen_w, screen_h))
-            self.font = pygame.font.SysFont(None, resolution // 30)
-            self.ui_surface = pygame.Surface((ui_size, screen_h))
+        self.screen_size_world = None
+        self.ui_surface = None
+        self.font = None
+
         self.clock = pygame.time.Clock()
 
+    def seed(self, seed=None):
+        """Initialize RNG, used for consistent reproducibility."""
+        self.rng, seed = seeding.np_random(seed)
+        return [seed]
+
     def reset(self):
-        """Generate the new game."""
+        """Generate the new game world, overrides gym.Env method."""
         self.over = False
         self.key_down = False
         self.num_steps = 0
         self.day = 1
 
         self.heroes = []
-        # decide at random who's turn is first
-        self.start_hero_idx = random.randrange(0, self.world_opt.num_teams)
         self.hero_idx = self.start_hero_idx
 
-        while len(self.heroes) < self.world_opt.num_teams:
+        while len(self.heroes) < self.mode.num_teams:
             self._generate_world()
             if self.num_gold_piles < 1:
-                logger.info('World with zero gold generated, try again!')
+                logger.debug('World with zero gold generated, try again!')
                 continue
             self._try_place_heroes()
 
@@ -440,14 +511,13 @@ class Game:
         camera_j = max(0, self.current_hero().pos.j - self.view_size // 2)
         self.camera_pos = Vec(camera_i, camera_j)
         self._update_camera_position()
-
-        return self.get_state()
+        return self._get_state()
 
     def _try_place_heroes(self):
         dim = self.world_size
 
         # Find all accessible space in the world, open areas where game objects are found. Otherwise heroes may
-        # stuck, completely surronded by obstacles.
+        # stuck, completely surrounded by obstacles.
         accessible = np.full((dim, dim), False, dtype=bool)
         q = deque([])
 
@@ -475,21 +545,16 @@ class Game:
                 if self.objects[new_i, new_j] is None:
                     unoccupied_cells.append((new_i, new_j))
 
-        if len(unoccupied_cells) < self.world_opt.num_teams:
-            logger.info('World generation failed, try again...')
+        if len(unoccupied_cells) < self.mode.num_teams:
+            logger.debug('World generation failed, try again...')
             return
 
-        # equal amount of movepoints for all heroes
-        min_movepoints = 2000
-        max_movepoints = max(min_movepoints, 250 * dim * 2)
-        max_movepoints = min(max_movepoints, 2500)
-        start_movepoints = random.randint(min_movepoints, max_movepoints)
-
         # place heroes at the random locations in the world
-        for team_idx in range(self.world_opt.num_teams):
+        for team_idx in range(self.mode.num_teams):
             team = Hero.teams[team_idx]
-            hero = Hero(self, team=team, start_movepoints=start_movepoints)
-            hero_pos_idx = random.randrange(len(unoccupied_cells))
+            hero = Hero(self, team=team)
+
+            hero_pos_idx = self.rng.randint(0, len(unoccupied_cells))
             hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
             unoccupied_cells.pop(hero_pos_idx)  # do not place other heroes in the same tile
             self.heroes.append(hero)
@@ -521,27 +586,25 @@ class Game:
         # noinspection PyTypeChecker
         self.objects = np.full((dim, dim), None, dtype=GameObject)
 
-        min_max_count_per_100_cells = {
-            GoldPile: (3, 20),
-            Stables: (0.5, 1),
-            LookoutTower: (0.66, 1),
-            ArmyDwelling: (0, 0),
-        }
+        obj_frequency = self.mode.obj_count_per_100_cells
+
+        # sort the keys to guarantee we always iterate in the same order, for reproducibility with fixed rng seed
+        obj_types = sorted(obj_frequency.keys(), key=lambda t: str(t))
 
         probability = {}
-        for obj_type, count_range in min_max_count_per_100_cells.items():
-            approx_count_per_100 = random.uniform(*count_range)
+        for obj_type in obj_types:
+            count_range = obj_frequency[obj_type]
+            approx_count_per_100 = self.rng.uniform(*count_range)
             probability[obj_type] = approx_count_per_100 / 100.0
 
-        obj_types = list(min_max_count_per_100_cells.keys())
-        np.random.shuffle(obj_types)
+        self.rng.shuffle(obj_types)
         for i in range(dim):
             for j in range(dim):
                 if not isinstance(self.terrain[i, j], Ground):
                     continue
                 for obj_type in obj_types:
-                    if random.random() < probability[obj_type]:
-                        self.objects[i, j] = obj_type()
+                    if self.rng.rand() < probability[obj_type]:
+                        self.objects[i, j] = obj_type(self)
                         if obj_type == GoldPile:
                             self.num_gold_piles += 1
                         break
@@ -555,9 +618,9 @@ class Game:
         # generate terrain "seeds"
         for i in range(dim):
             for j in range(dim):
-                terrain = random.choice(terrains)
-                seed_prob = self.world_opt.terrain_seed_prob[type(terrain)]
-                if random.random() > seed_prob:
+                terrain = self.rng.choice(terrains)
+                seed_prob = self.mode.terrain_seed_prob[type(terrain)]
+                if self.rng.rand() > seed_prob:
                     continue
                 self._spread_terrain(i, j, terrain)
 
@@ -575,7 +638,6 @@ class Game:
         q = deque([(seed_i, seed_j)])
         self.terrain[seed_i, seed_j] = terrain
 
-        spread_prob = 0.4
         while q:
             i, j = q.popleft()
             for di, dj in zip(DI, DJ):
@@ -583,7 +645,7 @@ class Game:
                 if not should_spread(new_i, new_j):
                     continue
                 self.terrain[new_i, new_j] = terrain
-                if random.random() < spread_prob:
+                if self.rng.rand() < self.mode.terrain_spread_prob:
                     q.append((new_i, new_j))
 
     def _is_border(self, i, j):
@@ -621,12 +683,12 @@ class Game:
                 num_zones += 1
 
         if num_zones <= 0:
-            logger.info('World with no objects, skip...')
+            logger.debug('World with no objects, skip...')
             return
 
         # Select one connected component and find shortest path to all other components.
         # Using Dijkstra algorithm to find shortest route, obstacle cells are given very high weight.
-        selected_zone = random.randrange(0, num_zones)
+        selected_zone = self.rng.randint(0, num_zones)
         search_start = None
         for (i, j), zone in np.ndenumerate(zones):
             if zone == selected_zone:
@@ -692,20 +754,9 @@ class Game:
     def should_quit(self):
         return self.quit
 
-    def allowed_actions(self):
-        if self.world_opt.diagonal_moves:
-            # remove noop for the RL agents, keep it only for human version
-            actions = list(Action.all_actions)
-            actions.remove(Action.noop)
-        else:
-            actions = [Action.up, Action.right, Action.down, Action.left]
-        return actions
-
     def process_events(self):
-        events = []
-        for event in pygame.event.get():
-            events.append(event.type)
-        if pygame.QUIT in events:
+        event_types = [e.type for e in get_events(block=self.wait_for_key)]
+        if pygame.QUIT in event_types:
             self.over = self.quit = True
             return Action.noop
 
@@ -723,15 +774,17 @@ class Game:
                     self.key_down = True
                     selected_action = action
                     break
+            if pressed[pygame.K_b]:
+                self.wait_for_key = not self.wait_for_key
 
-        if pygame.KEYUP in events:
+        if pygame.KEYUP in event_types:
             self.key_down = False
 
         return selected_action
 
     def _next_turn(self):
         reward = 0
-        self.hero_idx = (self.hero_idx + 1) % self.world_opt.num_teams
+        self.hero_idx = (self.hero_idx + 1) % self.mode.num_teams
         if self.hero_idx == self.start_hero_idx:
             # all heroes finished their moves, go to the next game day
             self._next_day()
@@ -750,7 +803,7 @@ class Game:
                     obj.on_new_day()  # some objects may change state between days
 
     def _game_over_condition(self):
-        if self.day > self.world_opt.max_days:
+        if self.day > self.mode.max_days:
             return True
         heroes_finished = sum([h.finished for h in self.heroes])
         return heroes_finished == len(self.heroes)  # all heroes are in finished state
@@ -764,8 +817,8 @@ class Game:
 
         # required movepoints
         penalty_coeff = self.terrain[new_pos.ij].penalty()
-        reward -= penalty_coeff * self.reward_unit  # tiny penalty for every step taken
         action_mp = Action.movepoints(action, penalty_coeff)
+        reward -= 10 * self.reward_unit * (action_mp / 100.0)  # small penalty for every step taken
 
         can_move = True
         if hero.movepoints < action_mp:
@@ -806,14 +859,14 @@ class Game:
 
         # Check if we have enough movepoints to make at least one more move. If no, then its the end of the turn.
         min_next_mp = sys.maxsize
-        for next_action in self.allowed_actions():
+        for next_action in self.mode.actions:
             next_pos = hero.pos + Action.delta(next_action)
             min_next_mp = min(min_next_mp, Action.movepoints(next_action, self.terrain[next_pos.ij].penalty()))
         if min_next_mp > hero.movepoints:
             # force the end of the turn
             hero.movepoints = 0
 
-        hero_done, endgame_reward = self.world_opt.check_endgame(self, hero)
+        hero_done, endgame_reward = self.mode.check_endgame(self, hero)
         if hero_done:
             hero.movepoints = 0
             hero.finished = True
@@ -825,7 +878,7 @@ class Game:
         return reward
 
     def step(self, action):
-        """Returns tuple (new_state, reward)."""
+        """Returns tuple (observation, reward, done, info) as required by gym.Env."""
         self.num_steps += 1
         hero = self.current_hero()
 
@@ -843,7 +896,10 @@ class Game:
         if self._game_over_condition():
             self.over = True
 
-        return self.get_state(), reward
+        # clamp reward
+        reward = np.clip(reward, *self.reward_range)
+
+        return self._get_state(), reward, self.over, {}
 
     def update_scouting(self, hero, scouting=None):
         if scouting is None:
@@ -863,23 +919,24 @@ class Game:
                     hero.fog_of_war[i, j] = 0
 
     def _update_camera_position(self):
-        # hero = self.current_hero()
+        if self.mode.center_camera:
+            # this just centers camera at the world center, useful for small worlds
+            self.camera_pos = Vec(
+                self.world_size // 2 - self.view_size // 2,
+                self.world_size // 2 - self.view_size // 2,
+            )
+        else:
+            # move camera with the hero, keeping minimal clearance to the borders of the screen
+            hero = self.current_hero()
 
-        # this just centers camera at the world center, useful for small worlds
-        self.camera_pos = Vec(
-            self.world_size // 2 - self.view_size // 2,
-            self.world_size // 2 - self.view_size // 2,
-        )
+            def update_coord(pos, hero_pos):
+                min_clearance = self.view_size // 2 - 1
+                pos = min(pos, hero_pos - min_clearance)
+                pos = max(pos, hero_pos - self.view_size + 1 + min_clearance)
+                return pos
 
-        # move camera with the hero, keeping minimal clearance to the borders of the screen
-        # def update_coord(pos, hero_pos):
-        #     min_clearance = self.view_size // 2 - 1
-        #     pos = min(pos, hero_pos - min_clearance)
-        #     pos = max(pos, hero_pos - self.view_size + 1 + min_clearance)
-        #     return pos
-        #
-        # self.camera_pos.i = update_coord(self.camera_pos.i, hero.pos.i)
-        # self.camera_pos.j = update_coord(self.camera_pos.j, hero.pos.j)
+            self.camera_pos.i = update_coord(self.camera_pos.i, hero.pos.i)
+            self.camera_pos.j = update_coord(self.camera_pos.j, hero.pos.j)
 
     def _render_game_world(self, surface, scale):
         camera = self.camera_pos
@@ -909,29 +966,41 @@ class Game:
                 if self.current_hero().fog_of_war[hero.pos.ij] == 0:
                     hero.draw(self, surface, pos, scale)
 
-    def _render_info(self):
+    def _render_ui(self, analytics):
         hero = self.current_hero()
         self.ui_surface.fill((0, 0, 0))
-        text_items = [
-            'Team: ' + str(self.current_hero().team),
-            'Movepoints: ' + str(hero.movepoints),
-            'Gold: ' + str(hero.money),
-            'Army: ' + str(hero.army),
-            'Day: ' + str(self.day),
-            'Finished: ' + str(hero.finished),
-            'Win: ' + str(hero.finished and not hero.is_defeated()),
-        ]
-        offset = self.screen.get_height() // 50
-        x_offset = y_offset = offset
+        info = {
+            'Team': self.current_hero().team,
+            'Movepoints': hero.movepoints,
+            'Gold': hero.money,
+            'Army': hero.army,
+            'Day': self.day,
+            'Finished': hero.finished,
+            'Win': hero.finished and not hero.is_defeated(),
+        }
+
+        span = self.screen.get_height() // 50
+        x_offset = y_offset = span
+        y_offset = self._render_info_block(info, x_offset, y_offset, span)
+
+        if analytics is not None:
+            self._render_info_block(analytics, x_offset, y_offset, span)
+
+    def _render_info_block(self, info, x_offset, y_offset, span):
         text_color = (248, 248, 242)
         for h in self.heroes:
             if h.finished and not h.is_defeated():
                 text_color = Hero.colors[h.team]
-        for text in text_items:
+        for key, value in sorted(info.items()):
+            if isinstance(value, np.ndarray):
+                value = ', '.join(['{:.3f}'.format(x) for x in value])
+
+            text = '{}: {}'.format(key, str(value))
             label = self.font.render(text, 1, text_color)
             self.ui_surface.blit(label, (x_offset, y_offset))
-            y_offset += label.get_height() + offset
+            y_offset += label.get_height() + span
         self.screen.blit(self.ui_surface, (self.screen_size_world, 0))
+        return y_offset
 
     def _render_layout(self):
         col = (24, 131, 215)
@@ -961,14 +1030,37 @@ class Game:
             'win': int(hero.finished and not hero.is_defeated()),
         }
 
-    def get_state(self):
-        return {
-            'visual_state': self._visual_state(),
-            'non_visual_state': self._non_visual_state(),
-        }
+    def _get_state(self):
+        return self._visual_state()
 
-    def render(self):
+        # TODO: restore non-visual state
+        # return {
+        #     'visual_state': self._visual_state(),
+        #     'non_visual_state': self._non_visual_state(),
+        # }
+
+    def render(self, mode='human', analytics=None):
+        if mode == 'human' and self.screen is None:
+            # initialize screen if it's needed
+            while self.screen_scale * self.view_size < self.human_resolution:
+                self.screen_scale += 1
+
+            self.screen_size_world = self.screen_scale * self.view_size
+            ui_size = min(200, self.human_resolution // 3)
+            screen_w = self.screen_size_world + ui_size
+            screen_h = self.screen_size_world
+            self.screen = pygame.display.set_mode((screen_w, screen_h))
+            self.font = pygame.font.SysFont(None, self.human_resolution // 32)
+            self.ui_surface = pygame.Surface((ui_size, screen_h))
+
         self._render_game_world(self.screen, self.screen_scale)
-        self._render_info()
+        self._render_ui(analytics)
         self._render_layout()
         pygame.display.flip()
+
+    def render_with_analytics(self, analytics):
+        return self.render(analytics=analytics)
+
+    def close(self):
+        """Overrides base class method."""
+        pygame.quit()

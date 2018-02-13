@@ -1,6 +1,6 @@
 import random
 
-from utils import *
+from utils.common_utils import *
 
 
 logger = logging.getLogger(os.path.basename(__file__))
@@ -11,17 +11,14 @@ class ReplayMemory:
         self.store_max_episodes = 5000
         self.episodes = []
 
-    def good_enough(self):
-        min_memory = 200
-        if len(self.episodes) < min_memory:
-            return False
-        return True
+    def size(self):
+        return len(self.episodes)
 
     def remember(self, experience):
         self.episodes.append(experience)
-        self.forget()
+        self._forget_something()
 
-    def forget(self):
+    def _forget_something(self):
         while len(self.episodes) > self.store_max_episodes:
             idx_to_delete = random.randrange(0, len(self.episodes))
             self.episodes.pop(idx_to_delete)

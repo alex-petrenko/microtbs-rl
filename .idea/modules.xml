@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/hierarchical-rl.iml" filepath="$PROJECT_DIR$/.idea/hierarchical-rl.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/rl-experiments.iml" filepath="$PROJECT_DIR$/.idea/rl-experiments.iml" />
     </modules>
   </component>

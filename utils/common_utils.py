@@ -1,6 +1,5 @@
 import os
 import sys
-import math
 import time
 import logging
 
@@ -14,55 +13,50 @@ if sys.platform == 'win32':
 else:
     LOGGING_FOLDER = '/tmp/py_logging'
 
+LOGGING_INITIALIZED = False
 
-class Vec:
-    def __init__(self, i, j):
-        self.i = i
-        self.j = j
 
-    @property
-    def x(self):
-        return self.j
+# Filesystem helpers
 
-    @x.setter
-    def x(self, x):
-        self.j = x
+def ensure_dir_exists(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+    return path
 
-    @property
-    def y(self):
-        return self.i
 
-    @y.setter
-    def y(self, y):
-        self.i = y
+def project_root():
+    return os.path.dirname(os.path.dirname(__file__))
 
-    @property
-    def ij(self):
-        return self.i, self.j
 
-    def __eq__(self, other):
-        return self.i == other.i and self.j == other.j
+def experiments_dir():
+    return ensure_dir_exists(join(project_root(), '.experiments'))
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
-    def __hash__(self):
-        return hash((self.i, self.j))
+def experiment_dir(experiment):
+    return ensure_dir_exists(join(experiments_dir(), experiment))
 
-    def __neg__(self):
-        return Vec(-self.i, -self.j)
 
-    def __add__(self, other):
-        return Vec(self.i + other.i, self.j + other.j)
+def model_dir(experiment):
+    return ensure_dir_exists(join(experiment_dir(experiment), '.model'))
 
-    def __sub__(self, other):
-        return self + (-other)
 
-    def dist_sq(self, other):
-        return (self.i - other.i) ** 2 + (self.j - other.j) ** 2
+def stats_dir(experiment):
+    return ensure_dir_exists(join(experiment_dir(experiment), '.stats'))
 
-    def dist(self, other):
-        return math.sqrt(self.dist_sq(other))
+
+def summaries_dir():
+    return ensure_dir_exists(join(project_root(), '.summary'))
+
+
+# Keeping track of experiments
+
+def get_experiment_name(env, name):
+    # noinspection PyProtectedMember
+    return get_experiment_name_env_id(env.spec.id, name)
+
+
+def get_experiment_name_env_id(env_id, name):
+    return '{}-{}'.format(env_id, name)
 
 
 # Helper functions
@@ -97,3 +91,12 @@ def init_logger(script_name):
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
     logging.info('Logging initialized!')
+
+
+def get_test_logger():
+    global LOGGING_INITIALIZED
+    if LOGGING_INITIALIZED is False:
+        init_logger('test')
+        LOGGING_INITIALIZED = True
+
+    return logging.getLogger('test')
