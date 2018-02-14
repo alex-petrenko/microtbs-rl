@@ -96,7 +96,7 @@ class DeepQNetwork:
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name)
 
 
-class AgentDqnSimple:
+class AgentDqn:
     class Params:
         def __init__(self, experiment_name):
             self.experiment_name = experiment_name
@@ -116,8 +116,15 @@ class AgentDqnSimple:
 
             self.exploration_schedule = [(0.8, 0)]  # in 80% of steps decay from 100% to 0% exploration
 
+            self._params_serialized = False
+
         def _params_file(self):
             return join(experiment_dir(self.experiment_name), 'params.json')
+
+        def ensure_serialized(self):
+            if not self._params_serialized:
+                self.serialize()
+                self._params_serialized = True
 
         def serialize(self):
             with open(self._params_file(), 'w') as json_file:
@@ -238,6 +245,9 @@ class AgentDqnSimple:
             self.session.run(tf.global_variables_initializer())
         logger.info('Initialized!')
 
+    def finalize(self):
+        self.session.close()
+
     def _generate_target_update_ops(self):
         primary_trainables = self.primary_dqn.get_trainable_variables()
         target_trainables = self.target_dqn.get_trainable_variables()
@@ -257,6 +267,7 @@ class AgentDqnSimple:
 
     def _maybe_save(self, step):
         next_step = step + 1
+        self.params.ensure_serialized()
         if next_step % self.params.save_every == 0:
             logger.info('Step #%d, saving...', step)
             saver_path = model_dir(self.params.experiment_name) + '/' + self.__class__.__name__

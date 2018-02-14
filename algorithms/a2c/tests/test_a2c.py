@@ -1,5 +1,6 @@
 import os
 import gym
+import shutil
 import logging
 import unittest
 import numpy as np
@@ -9,7 +10,7 @@ import envs
 from algorithms import a2c
 from algorithms.a2c.multi_env import MultiEnv
 
-from utils.common_utils import get_test_logger
+from utils.common_utils import get_test_logger, experiment_dir
 
 
 logger = get_test_logger()
@@ -68,8 +69,9 @@ class A2CTest(unittest.TestCase):
             np.testing.assert_array_almost_equal(calculated, expected_result)
 
     def test_train_and_run(self):
-        experiment_name = 'test'
+        experiment_name = 'a2c_test'
         a2c_params = a2c.AgentA2C.Params(experiment_name)
         a2c_params.train_for_steps = 10
         self.assertEqual(a2c.train_a2c.train(a2c_params, TEST_ENV), 0)
-        self.assertEqual(a2c.enjoy_a2c.enjoy(experiment_name, TEST_ENV, max_num_episodes=1), 0)
+        self.assertEqual(a2c.enjoy_a2c.enjoy(experiment_name, TEST_ENV, max_num_episodes=1, fps=500), 0)
+        shutil.rmtree(experiment_dir(experiment_name))

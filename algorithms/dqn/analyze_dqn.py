@@ -55,8 +55,8 @@ def main():
     env.render()
 
     experiment = 'dqn'
-    params = dqn.AgentDqnSimple.Params(experiment).load()
-    agent = dqn.AgentDqnSimple(env, params)
+    params = dqn.AgentDqn.Params(experiment).load()
+    agent = dqn.AgentDqn(env, params)
     agent.initialize()
 
     w, h, channels = env.observation_space.shape

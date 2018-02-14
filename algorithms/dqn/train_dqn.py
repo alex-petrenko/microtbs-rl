@@ -20,19 +20,27 @@ class DqnMonitor(Monitor):
             self.progress_file.flush()
 
 
+def train(dqn_params, env_id):
+    env = gym.make(env_id)
+    env.seed(0)
+
+    agent = dqn.AgentDqn(env, params=dqn_params)
+    agent.initialize()
+
+    with DqnMonitor(dqn_params.experiment_name) as monitor:
+        agent.learn(env, step_callback=monitor.callback)
+
+    agent.finalize()
+    return 0
+
+
 def main():
     init_logger(os.path.basename(__file__))
 
-    env = gym.make('MicroTbs-CollectWithTerrain-v0')
-    env.seed(0)
-
-    experiment = get_experiment_name(env, 'dqn_v3_inception')
-    params = dqn.AgentDqnSimple.Params(experiment)
-    agent = dqn.AgentDqnSimple(env, params=params)
-    agent.initialize()
-
-    with DqnMonitor(experiment) as monitor:
-        agent.learn(env, step_callback=monitor.callback)
+    env_id = 'MicroTbs-CollectWithTerrain-v1'
+    experiment = get_experiment_name_env_id(env_id, 'dqn_v3_inception')
+    params = dqn.AgentDqn.Params(experiment)
+    return train(params, env_id)
 
 
 if __name__ == '__main__':

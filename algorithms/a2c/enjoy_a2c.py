@@ -9,7 +9,7 @@ from utils.common_utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def enjoy(experiment, env_id, max_num_episodes=1000000):
+def enjoy(experiment, env_id, max_num_episodes=1000000, fps=6):
     env = gym.make(env_id)
     env.seed(0)
 
@@ -18,7 +18,6 @@ def enjoy(experiment, env_id, max_num_episodes=1000000):
     agent.initialize()
 
     episode_rewards = []
-    fps = 6
     for _ in range(max_num_episodes):
         obs, done = env.reset(), False
         episode_reward = 0
@@ -46,6 +45,7 @@ def enjoy(experiment, env_id, max_num_episodes=1000000):
         )
 
     agent.finalize()
+    env.close()
     return 0
 
 
