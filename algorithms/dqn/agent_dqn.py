@@ -7,6 +7,8 @@ from utils.common_utils import *
 from utils.replay_memory import ReplayMemory
 from utils.exploration import EpsilonGreedy, LinearDecay
 
+from algorithms.common import Agent
+
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -96,11 +98,10 @@ class DeepQNetwork:
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name)
 
 
-class AgentDqn:
-    class Params:
+class AgentDqn(AgentLearner):
+    class Params(AgentLearner.Params):
         def __init__(self, experiment_name):
-            self.experiment_name = experiment_name
-
+            super(AgentDqn.Params, self).__init__(experiment_name)
             self.target_update_speed = 0.05  # rate to update target DQN towards primary DQN
             self.update_target_every = 100  # apply target update ops every N training steps
             self.gamma = 0.9  # future reward discount in Bellman equation
@@ -116,34 +117,12 @@ class AgentDqn:
 
             self.exploration_schedule = [(0.8, 0)]  # in 80% of steps decay from 100% to 0% exploration
 
-            self._params_serialized = False
-
-        def _params_file(self):
-            return join(experiment_dir(self.experiment_name), 'params.json')
-
-        def ensure_serialized(self):
-            if not self._params_serialized:
-                self.serialize()
-                self._params_serialized = True
-
-        def serialize(self):
-            with open(self._params_file(), 'w') as json_file:
-                json.dump(self.__dict__, json_file, indent=2)
-
-        def load(self):
-            with open(self._params_file()) as json_file:
-                self.__dict__ = json.load(json_file)
-                return self
-
     def __init__(self, env, params):
-        self.params = params
+        super(AgentDqn, self).__init__(params)
 
-        self.session = None  # actually created in "initialize" method
         self.memory = ReplayMemory()
         self.exploration_strategy = EpsilonGreedy(LinearDecay(milestones=self.params.exploration_schedule))
         self.episode_buffer = []
-
-        tf.reset_default_graph()
 
         global_step = tf.train.get_or_create_global_step()
 
@@ -234,20 +213,6 @@ class AgentDqn:
 
         self.saver = tf.train.Saver(max_to_keep=3)
 
-    def initialize(self):
-        """Start the session."""
-        self.session = tf.Session()
-        checkpoint_dir = model_dir(self.params.experiment_name)
-        try:
-            self.saver.restore(self.session, tf.train.latest_checkpoint(checkpoint_dir=checkpoint_dir))
-        except ValueError:
-            logger.info('Didn\'t find a valid restore point, start from scratch')
-            self.session.run(tf.global_variables_initializer())
-        logger.info('Initialized!')
-
-    def finalize(self):
-        self.session.close()
-
     def _generate_target_update_ops(self):
         primary_trainables = self.primary_dqn.get_trainable_variables()
         target_trainables = self.target_dqn.get_trainable_variables()
@@ -264,15 +229,6 @@ class AgentDqn:
     def _maybe_update_target(self, step):
         if step % self.params.update_target_every == 0:
             self.session.run(self.update_target_ops)
-
-    def _maybe_save(self, step):
-        next_step = step + 1
-        self.params.ensure_serialized()
-        if next_step % self.params.save_every == 0:
-            logger.info('Step #%d, saving...', step)
-            saver_path = model_dir(self.params.experiment_name) + '/' + self.__class__.__name__
-            self.saver.save(self.session, saver_path, global_step=step)
-            self.params.serialize()
 
     def _maybe_print(self, step, rewards):
         if step % self.params.print_every == 0:

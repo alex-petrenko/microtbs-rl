@@ -38,7 +38,7 @@ def main():
     init_logger(os.path.basename(__file__))
 
     env_id = 'MicroTbs-CollectWithTerrain-v1'
-    experiment = get_experiment_name_env_id(env_id, 'dqn_v3_inception')
+    experiment = get_experiment_name(env_id, 'dqn_v3_inception')
     params = dqn.AgentDqn.Params(experiment)
     return train(params, env_id)
 

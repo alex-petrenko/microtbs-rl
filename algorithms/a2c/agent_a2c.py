@@ -4,6 +4,8 @@ import numpy as np
 from utils.dnn_utils import *
 from utils.common_utils import *
 
+from algorithms.common import AgentLearner
+
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -83,10 +85,10 @@ class Policy:
         return tf.concat(axis=3, values=[branch1x1, branch5x5, branch3x3dbl, branch_pool])
 
 
-class AgentA2C:
-    class Params:
+class AgentA2C(AgentLearner):
+    class Params(AgentLearner.Params):
         def __init__(self, experiment_name):
-            self.experiment_name = experiment_name
+            super(AgentA2C.Params, self).__init__(experiment_name)
 
             self.gamma = 0.9  # future reward discount
             self.learning_rate = 1e-3
@@ -102,9 +104,6 @@ class AgentA2C:
             self.summaries_every = 100
             self.print_every = 50
             self.train_for_steps = 50000
-
-            # other
-            self._params_serialized = False
 
         def _params_file(self):
             return join(experiment_dir(self.experiment_name), 'params.json')
@@ -124,10 +123,7 @@ class AgentA2C:
                 return self
 
     def __init__(self, env, params):
-        self.params = params
-        self.session = None
-
-        tf.reset_default_graph()
+        super(AgentA2C, self).__init__(params)
 
         input_shape = list(env.observation_space.shape)
         num_actions = env.action_space.n
@@ -186,28 +182,6 @@ class AgentA2C:
             self.all_summaries = tf.summary.merge_all()
 
         self.saver = tf.train.Saver(max_to_keep=3)
-
-    def initialize(self):
-        """Start the session."""
-        self.session = tf.Session()
-        checkpoint_dir = model_dir(self.params.experiment_name)
-        try:
-            self.saver.restore(self.session, tf.train.latest_checkpoint(checkpoint_dir=checkpoint_dir))
-        except ValueError:
-            logger.info('Didn\'t find a valid restore point, start from scratch')
-            self.session.run(tf.global_variables_initializer())
-        logger.info('Initialized!')
-
-    def finalize(self):
-        self.session.close()
-
-    def _maybe_save(self, step):
-        next_step = step + 1
-        self.params.ensure_serialized()
-        if next_step % self.params.save_every == 0:
-            logger.info('Step #%d, saving...', step)
-            saver_path = model_dir(self.params.experiment_name) + '/' + self.__class__.__name__
-            self.saver.save(self.session, saver_path, global_step=step)
 
     def _maybe_print(self, step, avg_rewards, fps):
         if step % self.params.print_every == 0:

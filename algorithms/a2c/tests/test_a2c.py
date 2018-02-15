@@ -72,6 +72,7 @@ class A2CTest(unittest.TestCase):
         experiment_name = 'a2c_test'
         a2c_params = a2c.AgentA2C.Params(experiment_name)
         a2c_params.train_for_steps = 10
+        a2c_params.save_every = a2c_params.train_for_steps - 1
         self.assertEqual(a2c.train_a2c.train(a2c_params, TEST_ENV), 0)
         self.assertEqual(a2c.enjoy_a2c.enjoy(experiment_name, TEST_ENV, max_num_episodes=1, fps=500), 0)
         shutil.rmtree(experiment_dir(experiment_name))

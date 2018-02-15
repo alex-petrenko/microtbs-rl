@@ -50,12 +50,7 @@ def summaries_dir():
 
 # Keeping track of experiments
 
-def get_experiment_name(env, name):
-    # noinspection PyProtectedMember
-    return get_experiment_name_env_id(env.spec.id, name)
-
-
-def get_experiment_name_env_id(env_id, name):
+def get_experiment_name(env_id, name):
     return '{}-{}'.format(env_id, name)
 
 
