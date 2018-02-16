@@ -12,9 +12,16 @@ from utils.monitor import Monitor
 
 logger = logging.getLogger(os.path.basename(__file__))
 
+SESSION = None
+
 
 class OpenaiDqnMonitor(Monitor):
     def callback(self, local_vars, _):
+        # save the session handle and close the session before exiting
+        global SESSION
+        if SESSION is None:
+            SESSION = local_vars['sess']
+
         timestep = local_vars['t']
         if timestep % 10 == 0:
             mean_reward = np.mean(local_vars['episode_rewards'][-100:])
@@ -52,6 +59,13 @@ def train(experiment, env_id, train_for_steps=50000):
     filename = join(model_dir(experiment), experiment + '.pkl')
     logger.info('Saving model to %s', filename)
     act.save(filename)
+
+    # the "learn" function does not close the session before exit, hence the hack
+    global SESSION
+    if SESSION is not None:
+        SESSION.__exit__(None, None, None)
+        del SESSION
+
     return 0
 
 

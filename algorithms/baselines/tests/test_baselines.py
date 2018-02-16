@@ -1,6 +1,5 @@
 import shutil
 import unittest
-import multiprocessing
 
 from algorithms.baselines import enjoy_baseline_random
 from algorithms.baselines.openai_baselines import enjoy_baseline_dqn
@@ -20,21 +19,7 @@ class RandomBaselineTest(unittest.TestCase):
 
 
 class OpenaiDqnBaselineTest(unittest.TestCase):
-    def test_train_and_run(self):
+    def test_train(self):
         experiment_name = 'openai_dqn_baseline_test'
-
-        def train():
-            self.assertEqual(train_baseline_dqn.train(experiment_name, TEST_ENV, 10), 0)
-
-        def enjoy():
-            self.assertEqual(enjoy_baseline_dqn.enjoy(experiment_name, TEST_ENV, max_num_episodes=1, fps=500), 0)
-
-        p = multiprocessing.Process(target=train)
-        p.start()
-        p.join()
-
-        p = multiprocessing.Process(target=enjoy)
-        p.start()
-        p.join()
-
+        self.assertEqual(train_baseline_dqn.train(experiment_name, TEST_ENV, 10), 0)
         shutil.rmtree(experiment_dir(experiment_name))

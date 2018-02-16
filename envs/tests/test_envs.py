@@ -1,13 +1,9 @@
 import os
 import gym
-import logging
 import unittest
 import numpy as np
 
-from utils.common_utils import get_test_logger
-
-
-logger = get_test_logger()
+import envs
 
 
 class MicroTbsTests(unittest.TestCase):

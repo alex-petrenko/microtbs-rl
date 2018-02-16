@@ -7,7 +7,7 @@ from utils.common_utils import *
 from utils.replay_memory import ReplayMemory
 from utils.exploration import EpsilonGreedy, LinearDecay
 
-from algorithms.common import Agent
+from algorithms.common import AgentLearner
 
 
 logger = logging.getLogger(os.path.basename(__file__))
