@@ -49,7 +49,7 @@ def image_loss(img):
 def main():
     init_logger(os.path.basename(__file__))
 
-    env_id = 'MicroTbs-CollectPartiallyObservable-v2'
+    env_id = 'MicroTbs-CollectPartiallyObservable-v3'
     env = gym.make(env_id)
     env.seed(0)
     observation = env.reset()

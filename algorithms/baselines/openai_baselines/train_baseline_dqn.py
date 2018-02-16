@@ -71,7 +71,7 @@ def train(experiment, env_id, train_for_steps=50000):
 
 def main():
     init_logger(os.path.basename(__file__))
-    env_id = 'MicroTbs-CollectWithTerrain-v1'
+    env_id = 'MicroTbs-CollectWithTerrain-v2'
     experiment = get_experiment_name(env_id, 'openai_dqn')
     return train(experiment, env_id)
 

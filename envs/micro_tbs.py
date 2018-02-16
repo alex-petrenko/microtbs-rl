@@ -434,7 +434,7 @@ class MicroTbs(gym.Env):
     reward_unit = 0.001
     max_reward_abs = 1000 * reward_unit
 
-    metadata = {'render.modes': ['human']}
+    metadata = {'render.modes': ['human', 'rgb_array']}
 
     def __init__(self, mode=None):
         # initialize pygame modules (this is safe to call more than once)
@@ -477,6 +477,7 @@ class MicroTbs(gym.Env):
 
         self.screen = None
         self.screen_size_world = None
+        self.rendering_surface = None  # used instead of screen to render in rgb_array mode
         self.ui_surface = None
         self.font = None
 
@@ -966,7 +967,7 @@ class MicroTbs(gym.Env):
                 if self.current_hero().fog_of_war[hero.pos.ij] == 0:
                     hero.draw(self, surface, pos, scale)
 
-    def _render_ui(self, analytics):
+    def _render_ui(self, surface, analytics):
         hero = self.current_hero()
         self.ui_surface.fill((0, 0, 0))
         info = {
@@ -979,14 +980,14 @@ class MicroTbs(gym.Env):
             'Win': hero.finished and not hero.is_defeated(),
         }
 
-        span = self.screen.get_height() // 50
+        span = surface.get_height() // 50
         x_offset = y_offset = span
-        y_offset = self._render_info_block(info, x_offset, y_offset, span)
+        y_offset = self._render_info_block(surface, info, x_offset, y_offset, span)
 
         if analytics is not None:
-            self._render_info_block(analytics, x_offset, y_offset, span)
+            self._render_info_block(surface, analytics, x_offset, y_offset, span)
 
-    def _render_info_block(self, info, x_offset, y_offset, span):
+    def _render_info_block(self, surface, info, x_offset, y_offset, span):
         text_color = (248, 248, 242)
         for h in self.heroes:
             if h.finished and not h.is_defeated():
@@ -999,13 +1000,13 @@ class MicroTbs(gym.Env):
             label = self.font.render(text, 1, text_color)
             self.ui_surface.blit(label, (x_offset, y_offset))
             y_offset += label.get_height() + span
-        self.screen.blit(self.ui_surface, (self.screen_size_world, 0))
+        surface.blit(self.ui_surface, (self.screen_size_world, 0))
         return y_offset
 
-    def _render_layout(self):
+    def _render_layout(self, surface):
         col = (24, 131, 215)
         w, h = self.screen_size_world, self.screen_size_world
-        pygame.draw.line(self.screen, col, (w, 0), (w, h), 2)
+        pygame.draw.line(surface, col, (w, 0), (w, h), 2)
 
     @staticmethod
     def draw_tile(surface, pos, color, scale):
@@ -1014,9 +1015,9 @@ class MicroTbs(gym.Env):
 
     def _visual_state(self):
         self._render_game_world(self.state_surface, 1)
-        view = pygame.surfarray.array3d(self.state_surface)
-        view = view.astype(np.float32) / 255.0  # convert to format for DNN
-        return view
+        observation = np.transpose(pygame.surfarray.array3d(self.state_surface), axes=[1, 0, 2])
+        observation = observation.astype(np.float32) / 255.0  # convert to format for DNN
+        return observation
 
     def _non_visual_state(self):
         hero = self.current_hero()
@@ -1031,16 +1032,17 @@ class MicroTbs(gym.Env):
         }
 
     def _get_state(self):
-        return self._visual_state()
-
-        # TODO: restore non-visual state
-        # return {
-        #     'visual_state': self._visual_state(),
-        #     'non_visual_state': self._non_visual_state(),
-        # }
+        with_non_visual_state = False
+        if with_non_visual_state:
+            return {
+                'visual_state': self._visual_state(),
+                'non_visual_state': self._non_visual_state(),
+            }
+        else:
+            return self._visual_state()
 
     def render(self, mode='human', analytics=None):
-        if mode == 'human' and self.screen is None:
+        if self.screen is None:
             # initialize screen if it's needed
             while self.screen_scale * self.view_size < self.human_resolution:
                 self.screen_scale += 1
@@ -1049,14 +1051,23 @@ class MicroTbs(gym.Env):
             ui_size = min(200, self.human_resolution // 3)
             screen_w = self.screen_size_world + ui_size
             screen_h = self.screen_size_world
-            self.screen = pygame.display.set_mode((screen_w, screen_h))
+            self.rendering_surface = pygame.Surface((screen_w, screen_h))
             self.font = pygame.font.SysFont(None, self.human_resolution // 32)
             self.ui_surface = pygame.Surface((ui_size, screen_h))
+            if mode == 'human':
+                self.screen = pygame.display.set_mode((screen_w, screen_h))
 
-        self._render_game_world(self.screen, self.screen_scale)
-        self._render_ui(analytics)
-        self._render_layout()
-        pygame.display.flip()
+        self._render_game_world(self.rendering_surface, self.screen_scale)
+        self._render_ui(self.rendering_surface, analytics)
+        self._render_layout(self.rendering_surface)
+
+        if mode == 'human':
+            self.screen.blit(self.rendering_surface, (0, 0))
+            pygame.display.flip()
+        elif mode == 'rgb_array':
+            return np.transpose(pygame.surfarray.array3d(self.rendering_surface), axes=[1, 0, 2])
+        else:
+            raise Exception('Unsupported rendering mode')
 
     def render_with_analytics(self, analytics):
         return self.render(analytics=analytics)

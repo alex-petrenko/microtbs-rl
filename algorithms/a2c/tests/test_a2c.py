@@ -15,7 +15,7 @@ from utils.common_utils import get_test_logger, experiment_dir
 
 logger = get_test_logger()
 
-TEST_ENV = 'MicroTbs-CollectWithTerrain-v1'
+TEST_ENV = 'MicroTbs-CollectWithTerrain-v2'
 
 
 class MultiEnvTest(unittest.TestCase):

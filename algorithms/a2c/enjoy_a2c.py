@@ -22,7 +22,7 @@ def enjoy(experiment, env_id, max_num_episodes=1000000, fps=6):
 def main():
     init_logger(os.path.basename(__file__))
 
-    env_id = 'MicroTbs-CollectPartiallyObservable-v2'
+    env_id = 'MicroTbs-CollectPartiallyObservable-v3'
     experiment = get_experiment_name(env_id, 'a2c_v4')
     return enjoy(experiment, env_id)
 

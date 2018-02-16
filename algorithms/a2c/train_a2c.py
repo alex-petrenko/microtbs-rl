@@ -37,7 +37,7 @@ def train(a2c_params, env_id):
 def main():
     init_logger(os.path.basename(__file__))
 
-    env_id = 'MicroTbs-CollectPartiallyObservable-v2'
+    env_id = 'MicroTbs-CollectPartiallyObservable-v3'
     experiment = get_experiment_name(env_id, 'a2c_v4')
 
     params = a2c.AgentA2C.Params(experiment)

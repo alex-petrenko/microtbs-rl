@@ -21,7 +21,7 @@ def enjoy(env_id, max_num_episodes=1000000, fps=6):
 
 def main():
     init_logger(os.path.basename(__file__))
-    env_id = 'MicroTbs-CollectWithTerrain-v1'
+    env_id = 'MicroTbs-CollectWithTerrain-v2'
     return enjoy(env_id)
 
 
