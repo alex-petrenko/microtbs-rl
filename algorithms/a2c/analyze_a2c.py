@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import envs
-from algorithms import dqn
+from algorithms import a2c
 
 from utils.dnn_utils import *
 from utils.common_utils import *
@@ -12,7 +12,7 @@ from utils.common_utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def deprocess_image(img):
+def to_image(img):
     x = np.copy(img)
     mean, std = x.mean(), x.std()
 
@@ -43,39 +43,35 @@ def image_loss(img):
     loss = tf.where(img > 1.0, tf.square(img), tf.zeros_like(img))
     loss += tf.where(img < 0.0, tf.square(img - 1), tf.zeros_like(img))
     loss = tf.reduce_sum(loss)
-    return 0.001 * loss
+    return 0.01 * loss
 
 
 def main():
     init_logger(os.path.basename(__file__))
 
-    env = gym.make('MicroTbs-CollectSimple-v0')
+    env_id = 'MicroTbs-CollectPartiallyObservable-v2'
+    env = gym.make(env_id)
     env.seed(0)
     observation = env.reset()
-    env.render()
 
-    experiment = 'dqn'
-    params = dqn.AgentDqn.Params(experiment).load()
-    agent = dqn.AgentDqn(env, params)
+    experiment = get_experiment_name(env_id, 'a2c_v4')
+    params = a2c.AgentA2C.Params(experiment).load()
+    agent = a2c.AgentA2C(env, params)
     agent.initialize()
 
-    w, h, channels = env.observation_space.shape
-    # input_img_data = np.random.random((w, h, channels))
-    # input_img_data = (input_img_data - 0.5) * 20 + 128
-    # input_img_data = np.full((w, h, channels), 0)
-    # input_img_data[0, :, 0] = 255
-    # input_img_data[0, :, 1] = 0
-    # input_img_data[0, :, 2] = 0
-    # input_img_data[:, 3, 0] = 255
+    start_from_initial_observation = True
+    if start_from_initial_observation:
+        input_img_data = observation
+    else:
+        w, h, channels = env.observation_space.shape
+        input_img_data = np.random.random((w, h, channels))
 
-    input_img_data = observation
     input_img_data = input_img_data.astype(np.float32)
-    plt.imshow(deprocess_image(input_img_data))
+    plt.imshow(to_image(input_img_data))
     plt.show()
 
-    # image = tf.placeholder(tf.float32, shape=[w, h, channels])
-    image = agent.primary_dqn.observations
-    target_loss = -agent.primary_dqn.Q_best
+    image = agent.policy.observations
+    target_loss = -agent.policy.value
 
     image_penalty = image_loss(image)
     loss = target_loss + image_penalty
@@ -99,8 +95,8 @@ def main():
         input_img_data -= grad[0][0] * step
         step *= 0.9999
 
-        if i % 10 == 0:
-            plt.imshow(deprocess_image(input_img_data))
+        if i % 1000 == 0:
+            plt.imshow(to_image(input_img_data))
             plt.show()
 
 
