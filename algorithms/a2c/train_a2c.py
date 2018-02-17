@@ -1,9 +1,8 @@
 import gym
 import numpy as np
 
-import envs
-
 from algorithms import a2c
+from algorithms.a2c.a2c_utils import *
 
 from utils.common_utils import *
 from utils.monitor import Monitor
@@ -37,14 +36,14 @@ def train(a2c_params, env_id):
 def main():
     init_logger(os.path.basename(__file__))
 
-    env_id = 'MicroTbs-CollectPartiallyObservable-v3'
-    experiment = get_experiment_name(env_id, 'a2c_v5')
+    env_id = CURRENT_ENV
+    experiment = get_experiment_name(env_id, CURRENT_EXPERIMENT)
 
     params = a2c.AgentA2C.Params(experiment)
     params.gamma = 0.95
     params.rollout = 10
     params.num_envs = 16
-    params.train_for_steps = 1000000
+    params.train_for_steps = 100000
     return train(params, env_id)
 
 

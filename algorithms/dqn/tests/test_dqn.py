@@ -14,7 +14,7 @@ from utils.common_utils import get_test_logger, experiment_dir
 
 logger = get_test_logger()
 
-TEST_ENV = 'MicroTbs-CollectWithTerrain-v2'
+TEST_ENV = envs.COLLECT_WITH_TERRAIN_LATEST
 
 
 class DqnTest(unittest.TestCase):

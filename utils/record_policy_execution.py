@@ -6,7 +6,9 @@ import logging
 import matplotlib.pyplot as plt
 
 import envs
+from envs import micro_tbs
 from algorithms import a2c
+from algorithms.a2c import a2c_utils
 
 from utils.common_utils import *
 
@@ -14,8 +16,9 @@ from utils.common_utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def record(experiment, env_id, num_episodes=1):
+def record(experiment, env_id, num_episodes=20, fps=6):
     env = gym.make(env_id)
+    env.seed(2)
 
     params = a2c.AgentA2C.Params(experiment).load()
     agent = a2c.AgentA2C(env, params)
@@ -24,41 +27,49 @@ def record(experiment, env_id, num_episodes=1):
     footage_dir = join(experiment_dir(experiment), '.footage')
     ensure_dir_exists(footage_dir)
 
+    game_screens = []
+
     for episode_idx in range(num_episodes):
         logger.info('Episode #%d', episode_idx)
 
-        step = 0
-        obs, done = env.reset(), False
-        while not done:
-            game_screen = env.render(mode='rgb_array')
-            img_name = '{ep:05d}_{step:05d}.jpg'.format(ep=episode_idx, step=step)
-            plt.imsave(join(footage_dir, img_name), game_screen)
+        while True:
+            obs = env.reset()
+            border_num_obstacles = env.world_size ** 2 - env.mode.play_area_size ** 2
+            num_obstacles = sum(isinstance(t, micro_tbs.Obstacle) for t in env.terrain.flatten())
+            min_obstacles_in_play_area = 6
+            min_gold_piles = 4
 
+            enough_obstacles = num_obstacles >= border_num_obstacles + min_obstacles_in_play_area
+            enough_gold = env.num_gold_piles >= min_gold_piles
+            env_is_interesting = enough_gold and enough_obstacles
+            if env_is_interesting:
+                break
+
+        step = 0
+        done = False
+        while not done:
+            game_screens.append(env.render(mode='rgb_array'))
             action = agent.best_action(obs)
             obs, _, done, _ = env.step(action)
             step += 1
+
+        game_screens.append(env.render(mode='rgb_array'))
 
     agent.finalize()
     env.close()
 
     logger.info('Rendering gif...')
 
-    images = []
-    image_files = sorted([f for f in os.listdir(footage_dir)])
-    for image_fname in image_files:
-        images.append(imageio.imread(join(footage_dir, image_fname)))
-        os.unlink(join(footage_dir, image_fname))
-
     gif_name = join(footage_dir, '{}.gif'.format(experiment))
-    kwargs = {'duration': 0.1}
-    imageio.mimsave(gif_name, images, 'GIF', **kwargs)
+    kwargs = {'duration': 1.0 / fps}
+    imageio.mimsave(gif_name, game_screens, 'GIF', **kwargs)
     return 0
 
 
 def main():
     init_logger(os.path.basename(__file__))
-    env_id = 'MicroTbs-CollectPartiallyObservable-v3'
-    experiment = get_experiment_name(env_id, 'a2c_v5')
+    env_id = a2c_utils.CURRENT_ENV
+    experiment = get_experiment_name(env_id, a2c_utils.CURRENT_EXPERIMENT)
     return record(experiment, env_id)
 
 

@@ -344,7 +344,7 @@ class GameMode:
         self.center_camera = False
 
         # World generation options.
-        self.world_size = 5
+        self.play_area_size = 5
         self.view_size = 7
         self.terrain_seed_prob = {Obstacle: 0.08, Swamp: 0.06}
         self.terrain_spread_prob = 0.4  # probability that terrain will spread from seed to adjacent cell
@@ -387,7 +387,7 @@ class GameMode:
     def collect_gold_partially_observable():
         mode = GameMode()
         mode.check_endgame = GameMode._check_endgame_collect
-        mode.world_size = 17
+        mode.play_area_size = 17
         mode.view_size = 15
         mode.max_days = 3
         mode.hero_start_movepoints = 3000
@@ -462,7 +462,7 @@ class MicroTbs(gym.Env):
         self.day = -1
 
         self.border = (self.view_size // 2) + 1
-        self.world_size = self.mode.world_size + 2 * self.border
+        self.world_size = self.mode.play_area_size + 2 * self.border
         self.terrain = None
         self.objects = None
         self.num_gold_piles = 0

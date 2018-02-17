@@ -6,7 +6,7 @@ import numpy as np
 import envs
 
 
-TEST_ENV = 'MicroTbs-CollectSimple-v2'
+TEST_ENV = envs.COLLECT_SIMPLE_LATEST
 
 
 class MicroTbsTests(unittest.TestCase):

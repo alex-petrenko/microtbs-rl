@@ -17,14 +17,7 @@ def main():
     init_logger(os.path.basename(__file__))
 
     experiments_v0 = [
-        #'openai_dqn_conv1x1_to_mlp',
-        #'openai_dqn_conv3x3_to_mlp',
-        #'openai_dqn_conv3x3_nostride_to_mlp',
-        #'openai_dqn_conv3x3_nostride_y100',
-
-        #get_experiment_name('MicroTbs-CollectSimple-v0', 'dqn'),
         get_experiment_name('MicroTbs-CollectWithTerrain-v0', 'dqn_v0'),
-        # get_experiment_name('MicroTbs-CollectWithTerrain-v0', 'dqn_v1_100k'),
         get_experiment_name('MicroTbs-CollectWithTerrain-v0', 'dqn_v3_inception'),
 
         get_experiment_name('MicroTbs-CollectWithTerrain-v0', 'a2c_v0'),
@@ -35,9 +28,10 @@ def main():
         get_experiment_name('MicroTbs-CollectWithTerrain-v0', 'openai_dqn'),
     ]
 
-    experiments_v1 = [
+    experiments_terrain_a2c = [
         get_experiment_name('MicroTbs-CollectWithTerrain-v1', 'a2c_v0'),
         get_experiment_name('MicroTbs-CollectWithTerrain-v1', 'a2c_v1'),
+        get_experiment_name('MicroTbs-CollectWithTerrain-v2', 'a2c_v5'),
     ]
 
     experiments_partially_observable = [
@@ -46,7 +40,7 @@ def main():
         get_experiment_name('MicroTbs-CollectPartiallyObservable-v3', 'a2c_v5'),
     ]
 
-    experiments = experiments_partially_observable
+    experiments = experiments_terrain_a2c
 
     for i in range(len(experiments)):
         experiment = experiments[i]
