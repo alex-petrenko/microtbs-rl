@@ -1,4 +1,5 @@
 import os
+import shutil
 import logging
 
 from unittest import TestCase
@@ -7,8 +8,8 @@ from algorithms import a2c
 
 import envs
 from utils.exploration import LinearDecay
-from utils.common_utils import get_test_logger
 from utils.record_policy_execution import record
+from utils.common_utils import get_test_logger, experiment_dir
 
 
 logger = get_test_logger()
