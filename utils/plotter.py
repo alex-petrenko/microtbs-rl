@@ -43,6 +43,7 @@ def main():
     experiments_partially_observable = [
         get_experiment_name('MicroTbs-CollectPartiallyObservable-v1', 'a2c_v2'),
         get_experiment_name('MicroTbs-CollectPartiallyObservable-v1', 'a2c_v3'),
+        get_experiment_name('MicroTbs-CollectPartiallyObservable-v3', 'a2c_v5'),
     ]
 
     experiments = experiments_partially_observable

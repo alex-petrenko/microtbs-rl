@@ -38,13 +38,13 @@ def main():
     init_logger(os.path.basename(__file__))
 
     env_id = 'MicroTbs-CollectPartiallyObservable-v3'
-    experiment = get_experiment_name(env_id, 'a2c_v4')
+    experiment = get_experiment_name(env_id, 'a2c_v5')
 
     params = a2c.AgentA2C.Params(experiment)
-    params.gamma = 0.925
+    params.gamma = 0.95
     params.rollout = 10
-    params.num_envs = 8
-    params.train_for_steps = 10000
+    params.num_envs = 16
+    params.train_for_steps = 1000000
     return train(params, env_id)
 
 
