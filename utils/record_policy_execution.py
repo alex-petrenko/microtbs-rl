@@ -16,8 +16,9 @@ from utils.common_utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def record(experiment, env_id, num_episodes=20, fps=6):
+def record(experiment, env_id, num_episodes=30, fps=6):
     env = gym.make(env_id)
+    env.render_resolution = 400
     env.seed(2)
 
     params = a2c.AgentA2C.Params(experiment).load()
@@ -32,11 +33,13 @@ def record(experiment, env_id, num_episodes=20, fps=6):
     for episode_idx in range(num_episodes):
         logger.info('Episode #%d', episode_idx)
 
+        # Make sure the generated environment is challenging enough for our agent (to make it interesting to watch).
+        # Re-generate new worlds until the right conditions are met.
         while True:
             obs = env.reset()
             border_num_obstacles = env.world_size ** 2 - env.mode.play_area_size ** 2
             num_obstacles = sum(isinstance(t, micro_tbs.Obstacle) for t in env.terrain.flatten())
-            min_obstacles_in_play_area = 6
+            min_obstacles_in_play_area = 7
             min_gold_piles = 4
 
             enough_obstacles = num_obstacles >= border_num_obstacles + min_obstacles_in_play_area

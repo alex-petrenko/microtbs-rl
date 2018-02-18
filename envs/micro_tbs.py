@@ -430,7 +430,7 @@ class GameMode:
 
 class MicroTbs(gym.Env):
     # game constants
-    human_resolution = 600
+    default_resolution = 600  # width and height of the game screen as rendered in pixels
     reward_unit = 0.001
     max_reward_abs = 1000 * reward_unit
 
@@ -474,7 +474,9 @@ class MicroTbs(gym.Env):
 
         # stuff related to game rendering
         self.screen_scale = 1
+        self.render_resolution = self.default_resolution
 
+        # rendering facilities, initialized only when (if) needed
         self.screen = None
         self.screen_size_world = None
         self.rendering_surface = None  # used instead of screen to render in rgb_array mode
@@ -1044,15 +1046,15 @@ class MicroTbs(gym.Env):
     def render(self, mode='human', analytics=None):
         if self.screen is None:
             # initialize screen if it's needed
-            while self.screen_scale * self.view_size < self.human_resolution:
+            while self.screen_scale * self.view_size < self.render_resolution:
                 self.screen_scale += 1
 
             self.screen_size_world = self.screen_scale * self.view_size
-            ui_size = min(200, self.human_resolution // 3)
+            ui_size = min(100, self.render_resolution // 3)
             screen_w = self.screen_size_world + ui_size
             screen_h = self.screen_size_world
             self.rendering_surface = pygame.Surface((screen_w, screen_h))
-            self.font = pygame.font.SysFont(None, self.human_resolution // 32)
+            self.font = pygame.font.SysFont(None, self.render_resolution // 32)
             self.ui_surface = pygame.Surface((ui_size, screen_h))
             if mode == 'human':
                 self.screen = pygame.display.set_mode((screen_w, screen_h))

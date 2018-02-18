@@ -238,7 +238,7 @@ class AgentA2C(AgentLearner):
         return reversed(discounted_rewards)
 
     def learn(self, multi_env, step_callback=None):
-        step = tf.train.global_step(self.session, tf.train.get_global_step())
+        step = initial_step = tf.train.global_step(self.session, tf.train.get_global_step())
         training_started = time.time()
         batch_size = self.params.rollout * self.params.num_envs
 
@@ -281,7 +281,7 @@ class AgentA2C(AgentLearner):
             self._maybe_save(step)
 
             avg_rewards = multi_env.calc_avg_rewards(n=100)
-            fps = (step * batch_size) / (time.time() - training_started)
+            fps = ((step - initial_step) * batch_size) / (time.time() - training_started)
             self._maybe_print(step, avg_rewards, fps)
             if step_callback is not None:
                 step_callback(locals(), globals())
