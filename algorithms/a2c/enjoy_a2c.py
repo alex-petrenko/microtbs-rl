@@ -10,7 +10,7 @@ from utils.common_utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def enjoy(experiment, env_id, max_num_episodes=1000000, fps=6):
+def enjoy(experiment, env_id, max_num_episodes=1000000, fps=7):
     env = gym.make(env_id)
     env.seed(0)
 

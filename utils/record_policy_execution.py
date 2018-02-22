@@ -16,9 +16,9 @@ from utils.common_utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def record(experiment, env_id, num_episodes=30, fps=6):
+def record(experiment, env_id, save_as_gif=False, num_episodes=1, fps=6):
     env = gym.make(env_id)
-    env.render_resolution = 400
+    env.render_resolution = 1080
     env.seed(2)
 
     params = a2c.AgentA2C.Params(experiment).load()
@@ -28,7 +28,15 @@ def record(experiment, env_id, num_episodes=30, fps=6):
     footage_dir = join(experiment_dir(experiment), '.footage')
     ensure_dir_exists(footage_dir)
 
-    game_screens = []
+    # if we render a shorter gif, let's just keep all the frames in memory
+    game_screens = [] if save_as_gif else None
+
+    def render_and_save_game_screen(_episode, _step):
+        game_screen = env.render(mode='rgb_array')
+        img_filename = join(footage_dir, '{episode:05d}_{step:05d}.png'.format(episode=_episode, step=_step))
+        plt.imsave(img_filename, game_screen)
+        if game_screens is not None:
+            game_screens.append(game_screen)
 
     for episode_idx in range(num_episodes):
         logger.info('Episode #%d', episode_idx)
@@ -51,21 +59,22 @@ def record(experiment, env_id, num_episodes=30, fps=6):
         step = 0
         done = False
         while not done:
-            game_screens.append(env.render(mode='rgb_array'))
+            render_and_save_game_screen(episode_idx, step)
             action = agent.best_action(obs)
             obs, _, done, _ = env.step(action)
             step += 1
 
-        game_screens.append(env.render(mode='rgb_array'))
+        render_and_save_game_screen(episode_idx, step)
 
     agent.finalize()
     env.close()
 
-    logger.info('Rendering gif...')
+    if save_as_gif:
+        logger.info('Rendering gif...')
+        gif_name = join(footage_dir, '{}.gif'.format(experiment))
+        kwargs = {'duration': 1.0 / fps}
+        imageio.mimsave(gif_name, game_screens, 'GIF', **kwargs)
 
-    gif_name = join(footage_dir, '{}.gif'.format(experiment))
-    kwargs = {'duration': 1.0 / fps}
-    imageio.mimsave(gif_name, game_screens, 'GIF', **kwargs)
     return 0
 
 

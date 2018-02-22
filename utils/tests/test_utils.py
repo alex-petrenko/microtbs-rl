@@ -48,5 +48,5 @@ class RenderGifTests(TestCase):
         a2c_params.train_for_steps = 10
         a2c_params.save_every = a2c_params.train_for_steps - 1
         self.assertEqual(a2c.train_a2c.train(a2c_params, test_env), 0)
-        self.assertEqual(record(experiment_name, test_env, num_episodes=1), 0)
+        self.assertEqual(record(experiment_name, test_env, save_as_gif=True, num_episodes=1), 0)
         shutil.rmtree(experiment_dir(experiment_name))

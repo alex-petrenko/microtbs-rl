@@ -1050,7 +1050,7 @@ class MicroTbs(gym.Env):
                 self.screen_scale += 1
 
             self.screen_size_world = self.screen_scale * self.view_size
-            ui_size = min(100, self.render_resolution // 3)
+            ui_size = max(100, self.render_resolution // 3)
             screen_w = self.screen_size_world + ui_size
             screen_h = self.screen_size_world
             self.rendering_surface = pygame.Surface((screen_w, screen_h))
