@@ -4,7 +4,7 @@ import tensorflow as tf
 
 from baselines import deepq
 
-from envs import micro_tbs
+import envs
 
 from utils.common_utils import *
 
@@ -50,8 +50,8 @@ def enjoy(experiment, env_id, max_num_episodes=1000000, fps=6):
 
 def main():
     init_logger(os.path.basename(__file__))
-    env_id = 'MicroTbs-CollectWithTerrain-v2'
-    experiment = get_experiment_name(env_id, 'dqn_v3_inception')
+    env_id = envs.COLLECT_WITH_TERRAIN_LATEST
+    experiment = get_experiment_name(env_id, 'openai_dqn')
     return enjoy(experiment, env_id)
 
 

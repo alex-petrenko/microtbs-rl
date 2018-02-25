@@ -21,7 +21,7 @@ def enjoy(experiment, env_id, max_num_episodes=1000000, fps=6):
 
 def main():
     init_logger(os.path.basename(__file__))
-    env_id = 'MicroTbs-CollectWithTerrain-v2'
+    env_id = envs.COLLECT_WITH_TERRAIN_LATEST
     experiment = get_experiment_name(env_id, 'dqn_v3_inception')
     return enjoy(experiment, env_id)
 

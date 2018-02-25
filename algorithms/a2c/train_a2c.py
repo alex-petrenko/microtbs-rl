@@ -43,7 +43,7 @@ def main():
     params.gamma = 0.95
     params.rollout = 10
     params.num_envs = 16
-    params.train_for_steps = 100000
+    params.train_for_steps = 20000
     return train(params, env_id)
 
 

@@ -54,8 +54,65 @@ future or an [imagination module](https://arxiv.org/abs/1707.06203).
 
 ### About the environment
 
-_TODO_
+This environment was created as a playground, to experiment with various RL algorithms.
+It resembles some of the traits of certain turn-based strategies like HOMM3, hence the name.
+The task is to collect as much resources (gold) as possible with a limited number of movepoints.
+
+Cell types in the environment:
+
+* Red - a hero
+* Yellow - gold piles
+* Grey - walls, obstacles
+* Green - swamp, increases movepoint penalty per move
+* Brown - stables, increase hero's movepoints
+* Light blue - lookout tower, opens the map in a certain radius
+* Black - fog-of-war, unknown territory
+
+Versions of the environment:
+
+* CollectSimple - plain gold collection, no terrain or obstacles
+* CollectWithTerrain - same, but with walls and obstacles in play area
+* CollectPartiallyObservable - with all types of cells, map is bigger than view size
+and must be explored
+
+There's also a PvP version of the environment, that allows experiments with self-play, but it is unfinished.
 
 ### How-to
 
-_TODO_
+Play the environment by yourself, with human controls:
+
+```shell
+python -m envs.gameplay
+```
+
+Train a DQN agent with default parameters and see how it works:
+
+```shell
+python -m algorithms.dqn.train_dqn
+python -m algorithms.dqn.enjoy_dqn
+```
+
+Train an A2C agent with default parameters and see how it works:
+
+```shell
+python -m algorithms.a2c.train_a2c
+python -m algorithms.a2c.enjoy_a2c
+```
+
+Train a baseline OpenAI DQN implementation and see how it works:
+
+```shell
+python -m algorithms.baselines.openai_baselines.train_baseline_dqn
+python -m algorithms.baselines.openai_baselines.enjoy_baseline_dqn
+```
+
+Run unit tests:
+
+```shell
+python -m unittest
+```
+
+See comments in the individual modules for details.
+
+If you have any questions or problems please feel free to reach me: apetrenko1991@gmail.com
+or just go ahead and open an issue. 

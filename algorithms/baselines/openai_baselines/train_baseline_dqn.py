@@ -4,7 +4,7 @@ import tensorflow as tf
 
 from baselines import deepq
 
-from envs import MicroTbs
+import envs
 
 from utils.common_utils import *
 from utils.monitor import Monitor
@@ -71,7 +71,7 @@ def train(experiment, env_id, train_for_steps=50000):
 
 def main():
     init_logger(os.path.basename(__file__))
-    env_id = 'MicroTbs-CollectWithTerrain-v2'
+    env_id = envs.COLLECT_WITH_TERRAIN_LATEST
     experiment = get_experiment_name(env_id, 'openai_dqn')
     return train(experiment, env_id)
 

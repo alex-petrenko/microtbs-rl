@@ -10,7 +10,7 @@ def main():
     """Script entry point."""
     init_logger(os.path.basename(__file__))
 
-    env = gym.make('MicroTbs-CollectPartiallyObservable-v1')
+    env = gym.make(envs.COLLECT_PARTIALLY_OBSERVABLE_LATEST)
     env.seed(0)
 
     fps = 30
