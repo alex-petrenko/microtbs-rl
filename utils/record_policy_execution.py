@@ -16,15 +16,14 @@ from utils.common_utils import *
 logger = logging.getLogger(os.path.basename(__file__))
 
 
-def record(experiment, env_id, save_as_gif=False, num_episodes=1, fps=6):
+def record(experiment, env_id, save_as_gif=False, num_episodes=100, fps=6):
     env = gym.make(env_id)
     env.render_resolution = 1080
-    env.seed(2)
+    env.seed(3)
 
     params = a2c.AgentA2C.Params(experiment).load()
     agent = a2c.AgentA2C(env, params)
     agent.initialize()
-
     footage_dir = join(experiment_dir(experiment), '.footage')
     ensure_dir_exists(footage_dir)
 
