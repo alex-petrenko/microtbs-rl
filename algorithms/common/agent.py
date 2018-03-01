@@ -1,3 +1,8 @@
+"""
+Base classes for RL agent implementations with some boilerplate.
+
+"""
+
 import json
 import numpy as np
 import tensorflow as tf

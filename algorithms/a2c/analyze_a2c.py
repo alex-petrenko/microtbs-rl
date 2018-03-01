@@ -1,9 +1,18 @@
+"""
+Experiments with the interpretation of the policy learned by A2C.
+Optimize the input observation to maximize the value estimation to see what the agent really looks for in the
+environment.
+
+"""
+
+
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
 
 import envs
 from algorithms import a2c
+from algorithms.a2c.a2c_utils import *
 
 from utils.dnn_utils import *
 from utils.common_utils import *
@@ -49,12 +58,12 @@ def image_loss(img):
 def main():
     init_logger(os.path.basename(__file__))
 
-    env_id = 'MicroTbs-CollectPartiallyObservable-v3'
+    env_id = CURRENT_ENV
     env = gym.make(env_id)
     env.seed(0)
     observation = env.reset()
 
-    experiment = get_experiment_name(env_id, 'a2c_v4')
+    experiment = get_experiment_name(env_id, CURRENT_EXPERIMENT)
     params = a2c.AgentA2C.Params(experiment).load()
     agent = a2c.AgentA2C(env, params)
     agent.initialize()
@@ -76,12 +85,15 @@ def main():
     image_penalty = image_loss(image)
     loss = target_loss + image_penalty
 
+    # calculate derivatives of the loss function wrt the input image (instead of model parameters)
     gradient = tf.gradients(loss, image)
     gradient = normalize(gradient)
 
     session = agent.session
     step = 0.01
     best_loss = None
+
+    # optimize the observation
     for i in range(100000):
         target_loss_v, image_loss_v, grad = session.run(
             [target_loss, image_penalty, gradient], feed_dict={image: [input_img_data]},

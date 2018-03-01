@@ -1,3 +1,9 @@
+"""
+Train an OpenAI Baselines DQN implementation, just to have a reference point.
+
+"""
+
+
 import gym
 import numpy as np
 import tensorflow as tf

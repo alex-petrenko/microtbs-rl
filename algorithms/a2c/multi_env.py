@@ -11,6 +11,12 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 
 class _MultiEnvWorker:
+    """
+    Helper class for the MultiEnv.
+    Currently implemented with threads, and it's slow because of GIL.
+    It would be much better to implement this with multiprocessing.
+    """
+
     def __init__(self, idx, make_env_func):
         self.idx = idx
 
@@ -41,6 +47,8 @@ class _MultiEnvWorker:
 
 
 class MultiEnv:
+    """Run multiple gym-compatible environments in parallel, keeping more or less the same interface."""
+
     def __init__(self, num_envs, make_env_func):
         self.num_envs = num_envs
         self.workers = [_MultiEnvWorker(i, make_env_func) for i in range(num_envs)]
@@ -55,6 +63,7 @@ class MultiEnv:
         return [worker.observation for worker in self.workers]
 
     def step(self, actions):
+        """Obviously, returns vectors of obs, rewards, dones instead of usual single values."""
         assert len(actions) == len(self.workers)
         for worker, action in zip(self.workers, actions):
             worker.action_queue.put(action)

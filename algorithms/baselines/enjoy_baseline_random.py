@@ -1,3 +1,10 @@
+"""
+Always handy to have a random agent.
+If an RL agent performs significantly better than random, then it must be at least learning something.
+
+"""
+
+
 import gym
 import numpy as np
 
@@ -21,7 +28,7 @@ def enjoy(env_id, max_num_episodes=1000000, fps=6):
 
 def main():
     init_logger(os.path.basename(__file__))
-    env_id = 'MicroTbs-CollectWithTerrain-v2'
+    env_id = envs.COLLECT_WITH_TERRAIN_LATEST
     return enjoy(env_id)
 
 

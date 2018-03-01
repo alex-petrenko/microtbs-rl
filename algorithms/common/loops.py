@@ -1,3 +1,8 @@
+"""
+Just a place to keep the code shared by many modules.
+
+"""
+
 import os
 import logging
 
@@ -6,6 +11,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 
 def run_policy_loop(agent, env, max_num_episodes, fps):
+    """Execute the policy and render onto the screen, using the standard agent interface."""
     agent.initialize()
 
     episode_rewards = []

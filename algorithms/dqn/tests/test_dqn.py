@@ -1,3 +1,8 @@
+"""
+DQN agent tests.
+
+"""
+
 import os
 import gym
 import shutil
