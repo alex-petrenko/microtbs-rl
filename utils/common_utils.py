@@ -1,3 +1,9 @@
+"""
+Common stuff used across all files.
+
+"""
+
+
 import os
 import sys
 import time

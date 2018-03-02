@@ -1,3 +1,12 @@
+"""
+Render the policy execution to gif or video.
+Gifs are generated with pure python code.
+To render a video, it just saves a bunch of images to a directory. Then it's very easy to render a video with ffmpeg.
+Like: ffmpeg -framerate 8 -pattern_type glob -i '*.png' out.mp4
+
+"""
+
+
 import os
 import gym
 import sys

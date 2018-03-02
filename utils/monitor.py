@@ -1,3 +1,11 @@
+"""
+Helper context manager, saves the training progress to .csv file.
+Very useful for comparing different algorithms.
+Plot the .cvs file with plotter.py
+
+"""
+
+
 import datetime
 
 from utils.common_utils import *

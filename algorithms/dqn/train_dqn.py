@@ -1,3 +1,9 @@
+"""
+Learn a policy with DQN algorithm.
+
+"""
+
+
 import gym
 import numpy as np
 

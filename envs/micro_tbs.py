@@ -1,3 +1,9 @@
+"""
+Implementation of the MicroTbs - a gym-compatible learning environment.
+
+"""
+
+
 import heapq
 
 from collections import deque
@@ -36,6 +42,7 @@ class Entity:
 
 
 class Terrain(Entity):
+    """An abstract unit of terrain."""
     @staticmethod
     def reachable():
         return True
@@ -46,11 +53,15 @@ class Terrain(Entity):
 
 
 class Ground(Terrain):
+    """Default terrain."""
+
     def _color(self):
         return 39, 40, 34
 
 
 class Obstacle(Terrain):
+    """An obstacle or a wall, can't be traversed."""
+
     @staticmethod
     def reachable():
         return False
@@ -60,6 +71,8 @@ class Obstacle(Terrain):
 
 
 class Swamp(Terrain):
+    """Just like normal terrain, but with increased movement penalty."""
+
     def _color(self):
         return 56, 73, 5
 
@@ -69,6 +82,8 @@ class Swamp(Terrain):
 
 
 class GameObject(Entity):
+    """Any object in the game that the player can interact with."""
+
     # noinspection PyUnusedLocal
     def __init__(self, game):
         self.disappear = False
@@ -82,7 +97,7 @@ class GameObject(Entity):
         """
         can_be_visited is True if we can "step" on the object, False otherwise.
         E.g. when we interact with a pile of gold, we can't step on it, we just collect it and
-        then it disappears and the hero takes it's place.
+        then it disappears.
         Stables or lookout towers, on the other hand, can be genuinely "visited".
 
         """
@@ -106,6 +121,8 @@ class GameObject(Entity):
 
 
 class GoldPile(GameObject):
+    """A simple gold pile, gives reward when collected. Also gives gold that can be spent in other objects."""
+
     def __init__(self, game):
         super(GoldPile, self).__init__(game)
 
@@ -115,7 +132,7 @@ class GoldPile(GameObject):
         self.amount = min_amount + size * step
 
     def interact(self, game, hero):
-        # give this gold to hero, also give some reward to RL agent
+        """Give this gold to hero, also give some reward to RL agent."""
         hero.money += self.amount
         reward = 100 * game.reward_unit
         game.num_gold_piles -= 1
@@ -127,6 +144,8 @@ class GoldPile(GameObject):
 
 
 class Stables(GameObject):
+    """Increases hero's movepoints when visited."""
+
     def __init__(self, game):
         super(Stables, self).__init__(game)
         self.cost = 500
@@ -163,6 +182,8 @@ class Stables(GameObject):
 
 
 class LookoutTower(GameObject):
+    """Uncovers the map in a large radius."""
+
     def __init__(self, game):
         super(LookoutTower, self).__init__(game)
         self.cost = 100
@@ -195,6 +216,8 @@ class LookoutTower(GameObject):
 
 
 class ArmyDwelling(GameObject):
+    """Army units are purchased here."""
+
     def __init__(self, game):
         super(ArmyDwelling, self).__init__(game)
         self.cost_per_unit = 1000
@@ -232,6 +255,8 @@ class ArmyDwelling(GameObject):
 
 
 class Hero(Entity):
+    """Represents a player in the game."""
+
     max_teams = 2
     teams = range(max_teams)
     team_red, team_blue = teams
@@ -294,6 +319,8 @@ class Hero(Entity):
 
 
 class Action:
+    """Possible actions in the environment."""
+
     all_actions = range(9)
     up, right, down, left, ul, ur, dl, dr, noop = all_actions
 
@@ -336,6 +363,8 @@ class Action:
 
 
 class GameMode:
+    """Play mode and world generation settings, all in one place."""
+
     def __init__(self):
         self.actions = Action.actions_simple()
         self.num_teams = 1
@@ -398,6 +427,7 @@ class GameMode:
 
     @staticmethod
     def pvp():
+        """Not fully finished, experimental."""
         mode = GameMode()
         mode.num_teams = 2
         mode.max_days = 3
@@ -429,6 +459,8 @@ class GameMode:
 
 
 class MicroTbs(gym.Env):
+    """World generation and game logic implementation."""
+
     # game constants
     default_resolution = 600  # width and height of the game screen as rendered in pixels
     reward_unit = 0.001
@@ -516,53 +548,8 @@ class MicroTbs(gym.Env):
         self._update_camera_position()
         return self._get_state()
 
-    def _try_place_heroes(self):
-        dim = self.world_size
-
-        # Find all accessible space in the world, open areas where game objects are found. Otherwise heroes may
-        # stuck, completely surrounded by obstacles.
-        accessible = np.full((dim, dim), False, dtype=bool)
-        q = deque([])
-
-        # all cells that are accessible, but not occupied by any object
-        unoccupied_cells = []
-
-        # we know that all objects are accessible, let's find the object and start search from there
-        for (i, j), obj in np.ndenumerate(self.objects):
-            if obj is not None:
-                accessible[i, j] = True
-                q.append((i, j))
-                break
-
-        # bfs
-        while q:
-            i, j = q.popleft()
-            for di, dj in zip(DI, DJ):
-                new_i, new_j = i + di, j + dj
-                if not self.terrain[new_i, new_j].reachable():
-                    continue
-                if accessible[new_i, new_j]:
-                    continue
-                accessible[new_i, new_j] = True
-                q.append((new_i, new_j))
-                if self.objects[new_i, new_j] is None:
-                    unoccupied_cells.append((new_i, new_j))
-
-        if len(unoccupied_cells) < self.mode.num_teams:
-            logger.debug('World generation failed, try again...')
-            return
-
-        # place heroes at the random locations in the world
-        for team_idx in range(self.mode.num_teams):
-            team = Hero.teams[team_idx]
-            hero = Hero(self, team=team)
-
-            hero_pos_idx = self.rng.randint(0, len(unoccupied_cells))
-            hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
-            unoccupied_cells.pop(hero_pos_idx)  # do not place other heroes in the same tile
-            self.heroes.append(hero)
-
     def _generate_world(self):
+        """Generate the 2D world according to the rules specified by game mode."""
         dim = self.world_size
 
         # reset counters
@@ -585,6 +572,7 @@ class MicroTbs(gym.Env):
         self._generate_terrain(ground, terrains)
 
     def _generate_objects(self):
+        """Generate objects in the world randomly, according to the probabilities specified in the game mode."""
         dim = self.world_size
         # noinspection PyTypeChecker
         self.objects = np.full((dim, dim), None, dtype=GameObject)
@@ -614,7 +602,9 @@ class MicroTbs(gym.Env):
 
     def _generate_terrain(self, default_terrain, terrains):
         """
-        Generate underlying terrain.
+        Generate underlying terrain. How it's done:
+        1) Place the terrain "seeds" randomly
+        2) From each seed the terrain can spread recursively in all directions, with the given probability.
         :param terrains: list of tuples (terrain, probability_of_terrain_seed)
         """
         dim = self.world_size
@@ -630,7 +620,10 @@ class MicroTbs(gym.Env):
         self._ensure_all_objects_are_accessible(default_terrain)
 
     def _spread_terrain(self, seed_i, seed_j, terrain):
-        """Use bfs instead of dfs to avoid possibly deep recursion."""
+        """
+        Propagate terrain cells randomly from the initial seed.
+        Use bfs instead of dfs to avoid possibly deep recursion.
+        """
         def should_spread(cell_i, cell_j):
             if self.objects[cell_i, cell_j] is not None:
                 return False
@@ -655,38 +648,33 @@ class MicroTbs(gym.Env):
         border = lambda coord: coord < self.border or coord >= self.world_size - self.border
         return border(i) or border(j)
 
-    def _mark_zone(self, zones, start_i, start_j, zone_idx):
-        """Run a bfs until all cells accessible from this one are marked with the same zone idx."""
-        q = deque([(start_i, start_j)])
-        zones[start_i, start_j] = zone_idx
-        while q:
-            i, j = q.popleft()
-            for di, dj in zip(DI, DJ):
-                new_i, new_j = i + di, j + dj
-                if zones[new_i, new_j] != -1:
-                    continue
-                if self.terrain[new_i, new_j].reachable():
-                    zones[new_i, new_j] = zone_idx
-                    q.append((new_i, new_j))
-
     def _ensure_all_objects_are_accessible(self, default_terrain):
         """
         After generation of obstacles some areas of the map may be inaccessible.
         The following code removes some obstacles to make it possible for heroes to reach all objects in the world.
+
+        How it's done:
+        1) Find all strongly connected components in the accessibility graph that contain objects ("zones").
+        2) Use Dijkstra algorithm to find shortest paths from the first zone to all other zones. If a zone can't
+        be reached by normal terrain, then find a shortest with the minimum number of visited obstacle cells.
+        To achieve that we just give a very high weight to obstacle cells in Dijkstra.
+        3) Traverse all shortest paths found by Dijkstra. If any obstacles occur in the path, replace them with
+        normal terrain.
+
         :param default_terrain: replace obstacles with this type of terrain where needed.
         """
         dim = self.world_size
         zones = np.full((dim, dim), -1, dtype=int)
         num_zones = 0
 
-        # find connected components of the world
+        # find strongly connected components containing objects
         for (i, j), obj in np.ndenumerate(self.objects):
             if obj is not None and zones[i, j] == -1:
                 self._mark_zone(zones, i, j, num_zones)
                 num_zones += 1
 
         if num_zones <= 0:
-            logger.debug('World with no objects, skip...')
+            logger.debug('Strange world with no objects, skip...')
             return
 
         # Select one connected component and find shortest path to all other components.
@@ -751,13 +739,82 @@ class MicroTbs(gym.Env):
                 cell_on_path = path[cell_on_path.ij]
             zone_reachable.add(zone)
 
+    def _mark_zone(self, zones, start_i, start_j, zone_idx):
+        """Run a bfs until all cells accessible from this one are marked with the same zone idx."""
+        q = deque([(start_i, start_j)])
+        zones[start_i, start_j] = zone_idx
+        while q:
+            i, j = q.popleft()
+            for di, dj in zip(DI, DJ):
+                new_i, new_j = i + di, j + dj
+                if zones[new_i, new_j] != -1:
+                    continue
+                if self.terrain[new_i, new_j].reachable():
+                    zones[new_i, new_j] = zone_idx
+                    q.append((new_i, new_j))
+
+    def _try_place_heroes(self):
+        """Determine starting positions of heroes."""
+        dim = self.world_size
+
+        # Find all accessible space in the world, open areas where game objects are found. Otherwise heroes may
+        # stuck, completely surrounded by obstacles.
+        accessible = np.full((dim, dim), False, dtype=bool)
+        q = deque([])
+
+        # all cells that are accessible, but not occupied by any object
+        unoccupied_cells = []
+
+        # we know that all objects can be reached from one another, let's pick an object and start search from there
+        for (i, j), obj in np.ndenumerate(self.objects):
+            if obj is not None:
+                accessible[i, j] = True
+                q.append((i, j))
+                break
+
+        # bfs
+        while q:
+            i, j = q.popleft()
+            for di, dj in zip(DI, DJ):
+                new_i, new_j = i + di, j + dj
+                if not self.terrain[new_i, new_j].reachable():
+                    continue
+                if accessible[new_i, new_j]:
+                    continue
+                accessible[new_i, new_j] = True
+                q.append((new_i, new_j))
+                if self.objects[new_i, new_j] is None:
+                    unoccupied_cells.append((new_i, new_j))
+
+        if len(unoccupied_cells) < self.mode.num_teams:
+            logger.debug('World generation failed, try again...')
+            return
+
+        # We have collected all accessible cells in the world where hero/heroes may start their journey.
+        # Select one randomly.
+        for team_idx in range(self.mode.num_teams):
+            team = Hero.teams[team_idx]
+            hero = Hero(self, team=team)
+
+            hero_pos_idx = self.rng.randint(0, len(unoccupied_cells))
+            hero.pos = Vec(*unoccupied_cells[hero_pos_idx])
+            unoccupied_cells.pop(hero_pos_idx)  # do not place other heroes in the same tile
+            self.heroes.append(hero)
+
     def is_over(self):
+        """
+        :return: True if the game episode is over.
+        """
         return self.over
 
     def should_quit(self):
+        """
+        :return: True if the used decided to quit the game altogether (e.g. closed the window).
+        """
         return self.quit
 
     def process_events(self):
+        """Process key presses, mainly for human play mode."""
         event_types = [e.type for e in get_events(block=self.wait_for_key)]
         if pygame.QUIT in event_types:
             self.over = self.quit = True
@@ -786,6 +843,7 @@ class MicroTbs(gym.Env):
         return selected_action
 
     def _next_turn(self):
+        """Pass control to the next hero."""
         reward = 0
         self.hero_idx = (self.hero_idx + 1) % self.mode.num_teams
         if self.hero_idx == self.start_hero_idx:
@@ -815,6 +873,7 @@ class MicroTbs(gym.Env):
         return self.heroes[self.hero_idx]
 
     def _game_step(self, action, hero):
+        """Advance the state of the environment according to game mechanics."""
         reward = 0
         new_pos = hero.pos + Action.delta(action)
 
@@ -854,7 +913,7 @@ class MicroTbs(gym.Env):
             if can_move:
                 if not self.terrain[new_pos.ij].reachable():
                     can_move = False
-                    # small penalty for bumping into obstacles
+                    # small negative rewards for bumping into obstacles
                     reward -= 50 * self.reward_unit
 
         if can_move:
@@ -905,6 +964,8 @@ class MicroTbs(gym.Env):
         return self._get_state(), reward, self.over, {}
 
     def update_scouting(self, hero, scouting=None):
+        """Uncover the unseen parts of the world if they are within the scouting range."""
+
         if scouting is None:
             scouting = hero.scouting
 

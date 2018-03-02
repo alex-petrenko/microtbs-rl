@@ -1,3 +1,9 @@
+"""
+Play a version of the environment with human controls.
+
+"""
+
+
 import gym
 import envs
 

@@ -1,3 +1,9 @@
+"""
+Non-prioritized replay buffer for off-policy algorithms (like DQN).
+
+"""
+
+
 import random
 
 from utils.common_utils import *

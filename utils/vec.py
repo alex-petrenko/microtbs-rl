@@ -1,3 +1,9 @@
+"""
+Helper 2D vector class. Mostly used in MicroTbs implementation.
+
+"""
+
+
 import math
 
 

@@ -1,3 +1,9 @@
+"""
+Utils module tests.
+
+"""
+
+
 import os
 import shutil
 import logging

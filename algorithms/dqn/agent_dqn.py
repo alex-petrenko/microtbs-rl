@@ -1,10 +1,14 @@
-import json
+"""
+Implementation of the Deep Q-Learning algorithm.
+
+"""
+
 import numpy as np
 
 from utils.dnn_utils import *
 from utils.common_utils import *
 
-from utils.replay_memory import ReplayMemory
+from algorithms.dqn.replay_memory import ReplayMemory
 from utils.exploration import EpsilonGreedy, LinearDecay
 
 from algorithms.common import AgentLearner
@@ -14,7 +18,9 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 
 class DeepQNetwork:
-    def __init__(self, input_shape, num_actions, name, is_target=False):
+    """A model that learns Q-values for the observation-action pairs."""
+
+    def __init__(self, input_shape, num_actions, name, is_target=False, model_type='inception'):
         self.name = name
 
         with_regularization = with_summaries = not is_target
@@ -29,8 +35,13 @@ class DeepQNetwork:
             self.observations = tf.placeholder(tf.float32, shape=input_shape)
 
             # convolutions
-            # conv_filters = self.convnet_simple([(32, 3, 1), (64, 3, 1), (64, 3, 1)])
-            conv_filters = self.inception()
+            if model_type == 'inception':
+                conv_filters = self.inception()
+            elif model_type == 'convnet':
+                conv_filters = self.convnet_simple([(32, 3, 1), (64, 3, 1), (64, 3, 1)])
+            else:
+                raise Exception('Unknown model type')
+
             conv_out = tf.contrib.layers.flatten(conv_filters)
 
             # "dueling" DQN trick
@@ -69,6 +80,7 @@ class DeepQNetwork:
         return conv(x, filters, kernel, stride=stride, regularizer=self.regularizer, scope=scope)
 
     def convnet_simple(self, convs):
+        """Basic stacked convnet."""
         layer = self.observations
         layer_idx = 1
         for filters, kernel, stride in convs:
@@ -77,6 +89,7 @@ class DeepQNetwork:
         return layer
 
     def inception(self):
+        """A single inception module preceded by a convolution layer."""
         conv_input = self.convnet_simple([(128, 3, 1)])
 
         with tf.variable_scope('branch1x1'):
@@ -99,8 +112,11 @@ class DeepQNetwork:
 
 
 class AgentDqn(AgentLearner):
+    """DQN algorithm implementation."""
+
     class Params(AgentLearner.Params):
         def __init__(self, experiment_name):
+            """Default parameters."""
             super(AgentDqn.Params, self).__init__(experiment_name)
             self.target_update_speed = 0.05  # rate to update target DQN towards primary DQN
             self.update_target_every = 100  # apply target update ops every N training steps
@@ -118,6 +134,7 @@ class AgentDqn(AgentLearner):
             self.exploration_schedule = [(0.8, 0)]  # in 80% of steps decay from 100% to 0% exploration
 
     def __init__(self, env, params):
+        """Initialize the computation graph."""
         super(AgentDqn, self).__init__(params)
 
         self.memory = ReplayMemory()
@@ -214,6 +231,7 @@ class AgentDqn(AgentLearner):
         self.saver = tf.train.Saver(max_to_keep=3)
 
     def _generate_target_update_ops(self):
+        """Tensorflow ops to transfer weights from primary to target network."""
         primary_trainables = self.primary_dqn.get_trainable_variables()
         target_trainables = self.target_dqn.get_trainable_variables()
         tau = self.params.target_update_speed
@@ -249,6 +267,7 @@ class AgentDqn(AgentLearner):
         return step / self.params.train_for_steps
 
     def analyze_observation(self, observation):
+        """Utility function, used to print agent's estimation of the current position."""
         Q, value, advantage = self.session.run(
             [self.primary_dqn.Q, self.primary_dqn.value, self.primary_dqn.advantage],
             feed_dict={self.primary_dqn.observations: [observation]},
@@ -263,6 +282,7 @@ class AgentDqn(AgentLearner):
         return actions[0]
 
     def _explore(self, env, observation, step):
+        """Use e-greedy exploration."""
         action = self.exploration_strategy.action(
             fraction_of_training=self._train_fraction(step),
             explore=env.action_space.sample,
@@ -275,6 +295,7 @@ class AgentDqn(AgentLearner):
         return new_observation, reward, done
 
     def _train_step(self, step):
+        """A learning iteration."""
         batch_size = self.params.batch_size
         observations, actions, new_observations, rewards, dones = self.memory.recollect(batch_size=batch_size)
 
@@ -306,6 +327,7 @@ class AgentDqn(AgentLearner):
         return step
 
     def learn(self, env, step_callback=None):
+        """Main learning loop."""
         episode_rewards = []
         step = tf.train.global_step(self.session, tf.train.get_global_step())
 

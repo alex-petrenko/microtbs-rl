@@ -1,3 +1,9 @@
+"""
+Plot the training progress data collected by the Monitor.
+
+"""
+
+
 import csv
 import numpy as np
 import matplotlib.pyplot as plt

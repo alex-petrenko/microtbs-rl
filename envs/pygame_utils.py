@@ -1,3 +1,9 @@
+"""
+Pygame helpers.
+
+"""
+
+
 import pygame
 
 
