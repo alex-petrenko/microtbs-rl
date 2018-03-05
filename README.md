@@ -112,7 +112,13 @@ Run unit tests:
 python -m unittest
 ```
 
+You can install this package into your python env and use as a dependency:
+
+```shell
+pip install -e .
+```
+
 See comments in the individual modules for details.
 
 If you have any questions or problems please feel free to reach me: apetrenko1991@gmail.com
-or just go ahead and open an issue. 
+or just go ahead and open an issue.
