@@ -82,28 +82,36 @@ There's also a PvP version of the environment, that allows experiments with self
 Play the environment by yourself, with human controls:
 
 ```shell
-python -m envs.gameplay
+python -m microtbs_rl.envs.gameplay
 ```
 
 Train a DQN agent with default parameters and see how it works:
 
 ```shell
-python -m algorithms.dqn.train_dqn
-python -m algorithms.dqn.enjoy_dqn
+python -m microtbs_rl.algorithms.dqn.train_dqn
+python -m microtbs_rl.algorithms.dqn.enjoy_dqn
 ```
 
 Train an A2C agent with default parameters and see how it works:
 
 ```shell
-python -m algorithms.a2c.train_a2c
-python -m algorithms.a2c.enjoy_a2c
+python -m microtbs_rl.algorithms.a2c.train_a2c
+python -m microtbs_rl.algorithms.a2c.enjoy_a2c
 ```
 
 Train a baseline OpenAI DQN implementation and see how it works:
 
 ```shell
-python -m algorithms.baselines.openai_baselines.train_baseline_dqn
-python -m algorithms.baselines.openai_baselines.enjoy_baseline_dqn
+python -m microtbs_rl.algorithms.baselines.openai_baselines.train_baseline_dqn
+python -m microtbs_rl.algorithms.baselines.openai_baselines.enjoy_baseline_dqn
+```
+
+To compare performance and learning curves of different algorithms you can
+modify the file plotter.py to add the experiments you're interested
+in. Then just run:
+
+```shell
+python -m microtbs_rl.utils.plotter
 ```
 
 Run unit tests:
@@ -112,13 +120,12 @@ Run unit tests:
 python -m unittest
 ```
 
-You can install this package into your python env and use as a dependency:
+You can install this package into your python env and use it as a dependency:
 
 ```shell
 pip install -e .
 ```
 
-See comments in the individual modules for details.
 
 If you have any questions or problems please feel free to reach me: apetrenko1991@gmail.com
-or just go ahead and open an issue.
+Or just go ahead and open an issue here on Github.
