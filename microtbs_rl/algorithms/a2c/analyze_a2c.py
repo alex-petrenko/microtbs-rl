@@ -10,10 +10,11 @@ import gym
 import numpy as np
 import matplotlib.pyplot as plt
 
+from microtbs_rl.utils.dnn_utils import *
+from microtbs_rl.utils.common_utils import *
+
 from microtbs_rl.algorithms import a2c
 from microtbs_rl.algorithms.a2c.a2c_utils import *
-
-from microtbs_rl.utils.common_utils import *
 
 
 logger = logging.getLogger(os.path.basename(__file__))

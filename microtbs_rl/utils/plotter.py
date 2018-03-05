@@ -21,7 +21,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 def main():
     init_logger(os.path.basename(__file__))
 
-    experiments_v0 = [
+    _ = [
         get_experiment_name('MicroTbs-CollectWithTerrain-v0', 'dqn_v0'),
         get_experiment_name('MicroTbs-CollectWithTerrain-v0', 'dqn_v3_inception'),
 
@@ -33,19 +33,17 @@ def main():
         get_experiment_name('MicroTbs-CollectWithTerrain-v0', 'openai_dqn'),
     ]
 
-    experiments_terrain_a2c = [
+    experiments = [
         get_experiment_name('MicroTbs-CollectWithTerrain-v1', 'a2c_v0'),
         get_experiment_name('MicroTbs-CollectWithTerrain-v1', 'a2c_v1'),
         get_experiment_name('MicroTbs-CollectWithTerrain-v2', 'a2c_v5'),
     ]
 
-    experiments_partially_observable = [
+    _ = [
         get_experiment_name('MicroTbs-CollectPartiallyObservable-v1', 'a2c_v2'),
         get_experiment_name('MicroTbs-CollectPartiallyObservable-v1', 'a2c_v3'),
         get_experiment_name('MicroTbs-CollectPartiallyObservable-v3', 'a2c_v5'),
     ]
-
-    experiments = experiments_terrain_a2c
 
     for i in range(len(experiments)):
         experiment = experiments[i]

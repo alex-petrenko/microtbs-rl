@@ -31,7 +31,11 @@ def ensure_dir_exists(path):
 
 
 def project_root():
-    return os.path.dirname(os.path.dirname(__file__))
+    """
+    Keep models, parameters and summaries at the root of this project's directory tree.
+    :return: full path to the root dir of this project.
+    """
+    return os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 
 def experiments_dir():
@@ -61,11 +65,6 @@ def get_experiment_name(env_id, name):
 
 
 # Helper functions
-
-def bp():
-    import ipdb
-    ipdb.set_trace()
-
 
 def init_logger(script_name):
     """Initialize logging facilities for particular script."""
