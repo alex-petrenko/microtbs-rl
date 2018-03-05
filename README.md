@@ -1,4 +1,4 @@
-# Reinforcement Learning Experiments
+## RL algorithms for the MicroTbs learning environment
 
 This repository contains:
 * Implementation of the [gym](https://github.com/openai/gym)-compatible learning environment called MicroTbs
